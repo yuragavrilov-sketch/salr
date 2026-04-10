@@ -26,4 +26,11 @@ class CommandPriorityTest {
     void fromByte_unknownValue_returnsNormal() {
         assertThat(CommandPriority.fromByte((byte) 77)).isEqualTo(CommandPriority.NORMAL);
     }
+
+    @Test
+    void fromByte_roundTrip_allValues() {
+        for (CommandPriority p : CommandPriority.values()) {
+            assertThat(CommandPriority.fromByte(p.asByte())).isEqualTo(p);
+        }
+    }
 }
