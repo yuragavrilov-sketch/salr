@@ -31,8 +31,11 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -71,7 +74,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       (нужен только при использовании {@code PROBE_CLONE_QUEUES})</li>
  *   <li>{@code RMQ_MGMT_SCHEME} — http или https, по умолчанию http</li>
  *   <li>{@code PROBE_OUTPUT_DIR} — по умолчанию ./probe-output</li>
- *   <li>{@code PROBE_MAX_MESSAGES} — по умолчанию 0 (без ограничения, до Ctrl+C)</li>
+ *   <li>{@code PROBE_MAX_MESSAGES} — общий cap по сохранённым сообщениям, по умолчанию 0 (без ограничения)</li>
+ *   <li>{@code PROBE_PER_KEY_LIMIT} — сколько сообщений сохранять для каждого
+ *       уникального {@code (exchange, routingKey)}, по умолчанию 3. Лишние ack'аются и игнорируются.</li>
+ *   <li>{@code PROBE_IDLE_TIMEOUT_SECONDS} — авто-выход через N секунд тишины
+ *       после первого пойманного сообщения, по умолчанию 30. Установить 0, чтобы отключить.</li>
  * </ul>
  *
  * <p>Пример:
@@ -89,6 +96,10 @@ public final class WireProbeMain {
         .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
         .setSerializationInclusion(JsonInclude.Include.NON_NULL)
         .enable(SerializationFeature.INDENT_OUTPUT);
+
+    private static final Map<String, AtomicInteger> PER_KEY_COUNT = new ConcurrentHashMap<>();
+    private static volatile Instant LAST_MESSAGE_AT;
+    private static volatile boolean SUMMARY_PRINTED = false;
 
     public static void main(String[] args) throws Exception {
         Config cfg = Config.fromEnv();
@@ -167,30 +178,49 @@ public final class WireProbeMain {
             }
             System.out.println("  " + applied + " binding(s) applied.");
 
-            AtomicInteger counter = new AtomicInteger();
+            AtomicInteger savedCounter = new AtomicInteger();
+            AtomicInteger seenCounter = new AtomicInteger();
             CountDownLatch done = new CountDownLatch(1);
+
+            // Print summary on JVM shutdown (covers Ctrl+C and normal exit)
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                printSummary(savedCounter.get(), seenCounter.get(), "shutdown");
+            }, "wire-probe-shutdown"));
 
             channel.basicConsume(queueName, false, "wire-probe", new DefaultConsumer(channel) {
                 @Override
                 public void handleDelivery(String consumerTag, Envelope envelope,
                                            AMQP.BasicProperties properties, byte[] body) throws IOException {
-                    int n = counter.incrementAndGet();
-                    String filename = String.format("msg-%03d-%s.json", n, sanitize(envelope.getRoutingKey()));
-                    Path target = outDir.resolve(filename);
+                    LAST_MESSAGE_AT = Instant.now();
+                    int seen = seenCounter.incrementAndGet();
 
-                    try {
-                        Map<String, Object> dump = buildDump(envelope, properties, body);
-                        MAPPER.writerWithDefaultPrettyPrinter().writeValue(target.toFile(), dump);
-                        System.out.printf("[%d] %s -> %s (%d bytes)%n",
-                            n, envelope.getRoutingKey(), filename, body.length);
-                    } catch (Exception e) {
-                        System.err.println("Failed to dump message #" + n + ": " + e.getMessage());
-                        e.printStackTrace();
+                    String key = envelope.getExchange() + "::" + envelope.getRoutingKey();
+                    int countForKey = PER_KEY_COUNT
+                        .computeIfAbsent(key, k -> new AtomicInteger())
+                        .incrementAndGet();
+
+                    boolean overKeyLimit = cfg.perKeyLimit > 0 && countForKey > cfg.perKeyLimit;
+
+                    if (!overKeyLimit) {
+                        int n = savedCounter.incrementAndGet();
+                        String filename = String.format("msg-%03d-%s.json",
+                            n, sanitize(envelope.getRoutingKey()));
+                        Path target = outDir.resolve(filename);
+
+                        try {
+                            Map<String, Object> dump = buildDump(envelope, properties, body);
+                            MAPPER.writerWithDefaultPrettyPrinter().writeValue(target.toFile(), dump);
+                            System.out.printf("[%d] %s -> %s (%d bytes) [#%d for this key]%n",
+                                n, envelope.getRoutingKey(), filename, body.length, countForKey);
+                        } catch (Exception e) {
+                            System.err.println("Failed to dump message #" + n + ": " + e.getMessage());
+                            e.printStackTrace();
+                        }
                     }
 
                     channel.basicAck(envelope.getDeliveryTag(), false);
 
-                    if (cfg.maxMessages > 0 && n >= cfg.maxMessages) {
+                    if (cfg.maxMessages > 0 && savedCounter.get() >= cfg.maxMessages) {
                         done.countDown();
                     }
                 }
@@ -198,18 +228,65 @@ public final class WireProbeMain {
 
             System.out.println();
             System.out.println("Probe is running. Waiting for messages on temp queue.");
-            System.out.println(cfg.maxMessages > 0
-                ? "Will stop after " + cfg.maxMessages + " messages."
-                : "Press Ctrl+C to stop.");
+            System.out.println("Per-key limit:    " + (cfg.perKeyLimit > 0
+                ? cfg.perKeyLimit + " (further duplicates of same routing key are ack'ed and ignored)"
+                : "unlimited"));
+            System.out.println("Idle timeout:     " + (cfg.idleTimeoutSeconds > 0
+                ? cfg.idleTimeoutSeconds + "s (probe exits after first message + this much idle)"
+                : "disabled"));
+            System.out.println("Overall max:      " + (cfg.maxMessages > 0
+                ? cfg.maxMessages + " saved messages" : "unlimited"));
+            System.out.println("Press Ctrl+C to stop manually.");
             System.out.println();
 
-            if (cfg.maxMessages > 0) {
-                done.await();
-                System.out.println("Captured " + counter.get() + " messages. Exiting.");
-            } else {
-                Thread.currentThread().join();
+            // Idle watcher: exit when no traffic for idleTimeoutSeconds AFTER first message
+            if (cfg.idleTimeoutSeconds > 0) {
+                Thread watcher = new Thread(() -> {
+                    try {
+                        while (!Thread.currentThread().isInterrupted()) {
+                            Thread.sleep(1000);
+                            Instant last = LAST_MESSAGE_AT;
+                            if (last == null) continue;       // no message yet, keep waiting
+                            long idle = java.time.Duration.between(last, Instant.now()).toSeconds();
+                            if (idle >= cfg.idleTimeoutSeconds) {
+                                System.out.println();
+                                System.out.println("Idle for " + idle + "s after "
+                                    + savedCounter.get() + " saved message(s). Exiting.");
+                                done.countDown();
+                                return;
+                            }
+                        }
+                    } catch (InterruptedException ignored) {
+                    }
+                }, "wire-probe-idle-watcher");
+                watcher.setDaemon(true);
+                watcher.start();
+            }
+
+            done.await();
+            printSummary(savedCounter.get(), seenCounter.get(), "main");
+        }
+    }
+
+    private static synchronized void printSummary(int saved, int seen, String reason) {
+        if (SUMMARY_PRINTED) return;
+        SUMMARY_PRINTED = true;
+        System.out.println();
+        System.out.println("==== sal-wire-probe summary (" + reason + ") ====");
+        System.out.println("Total messages seen:  " + seen);
+        System.out.println("Total messages saved: " + saved);
+        if (!PER_KEY_COUNT.isEmpty()) {
+            System.out.println("Per routing-key counts (seen):");
+            // Sorted output for stable readable summary
+            TreeMap<String, Integer> sorted = new TreeMap<>();
+            for (Map.Entry<String, AtomicInteger> e : PER_KEY_COUNT.entrySet()) {
+                sorted.put(e.getKey(), e.getValue().get());
+            }
+            for (Map.Entry<String, Integer> e : sorted.entrySet()) {
+                System.out.println("  " + e.getValue() + "  " + e.getKey());
             }
         }
+        System.out.println("================================================");
     }
 
     private static Map<String, Object> buildDump(Envelope envelope,
@@ -375,6 +452,8 @@ public final class WireProbeMain {
         int mgmtPort;
         String outputDir;
         int maxMessages;
+        int perKeyLimit;
+        int idleTimeoutSeconds;
 
         static Config fromEnv() {
             Config c = new Config();
@@ -387,6 +466,8 @@ public final class WireProbeMain {
             c.mgmtPort = Integer.parseInt(env("RMQ_MGMT_PORT", "15672"));
             c.outputDir = env("PROBE_OUTPUT_DIR", "./probe-output");
             c.maxMessages = Integer.parseInt(env("PROBE_MAX_MESSAGES", "0"));
+            c.perKeyLimit = Integer.parseInt(env("PROBE_PER_KEY_LIMIT", "3"));
+            c.idleTimeoutSeconds = Integer.parseInt(env("PROBE_IDLE_TIMEOUT_SECONDS", "30"));
 
             c.bindings = new ArrayList<>();
             String bindingsRaw = env("PROBE_BINDINGS", "");
@@ -430,6 +511,8 @@ public final class WireProbeMain {
             System.out.println("User:      " + username);
             System.out.println("Output:    " + outputDir);
             System.out.println("Max msgs:  " + (maxMessages > 0 ? maxMessages : "unlimited"));
+            System.out.println("Per-key limit:    " + (perKeyLimit > 0 ? perKeyLimit : "unlimited"));
+            System.out.println("Idle timeout (s): " + (idleTimeoutSeconds > 0 ? idleTimeoutSeconds : "disabled"));
             if (!bindings.isEmpty()) {
                 System.out.println("Explicit bindings:");
                 for (Binding b : bindings) {
