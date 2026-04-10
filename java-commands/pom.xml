@@ -30,6 +30,7 @@
         <module>sal-commands-core</module>
         <module>sal-commands-spring-boot-starter</module>
         <module>sal-commands-test</module>
+        <module>sal-commands-wire-probe</module>
     </modules>
 
     <dependencyManagement>
