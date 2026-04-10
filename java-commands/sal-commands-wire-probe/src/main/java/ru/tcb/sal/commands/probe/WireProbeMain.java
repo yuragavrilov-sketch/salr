@@ -1,6 +1,7 @@
 package ru.tcb.sal.commands.probe;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -13,10 +14,16 @@ import com.rabbitmq.client.Envelope;
 import com.rabbitmq.client.LongString;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -46,8 +53,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>{@code RMQ_VHOST} — по умолчанию /</li>
  *   <li>{@code RMQ_USER} — обязательно</li>
  *   <li>{@code RMQ_PASS} — обязательно</li>
- *   <li>{@code PROBE_BINDINGS} — обязательно, формат
- *       {@code exchange1:routingKey1,exchange2:routingKey2,...}</li>
+ *   <li>{@code PROBE_BINDINGS} — формат
+ *       {@code exchange1:routingKey1,exchange2:routingKey2,...} (опционально)</li>
+ *   <li>{@code PROBE_CLONE_QUEUES} — список очередей через запятую,
+ *       binding'и которых надо клонировать в нашу temp queue (опционально).
+ *       Удобно для зеркалирования всего трафика существующего .NET-адаптера —
+ *       тулз получит копии всех его команд и результатов всех типов сразу.</li>
+ *   <li>Должно быть задано минимум одно из {@code PROBE_BINDINGS} / {@code PROBE_CLONE_QUEUES}.</li>
+ *   <li>{@code RMQ_MGMT_PORT} — порт RMQ Management HTTP API, по умолчанию 15672
+ *       (нужен только при использовании {@code PROBE_CLONE_QUEUES})</li>
+ *   <li>{@code RMQ_MGMT_SCHEME} — http или https, по умолчанию http</li>
  *   <li>{@code PROBE_OUTPUT_DIR} — по умолчанию ./probe-output</li>
  *   <li>{@code PROBE_MAX_MESSAGES} — по умолчанию 0 (без ограничения, до Ctrl+C)</li>
  * </ul>
@@ -93,10 +108,26 @@ public final class WireProbeMain {
             channel.queueDeclare(queueName, false, true, true, null);
             System.out.println("Declared temp queue: " + queueName);
 
-            for (Binding b : cfg.bindings) {
-                channel.queueBind(queueName, b.exchange, b.routingKey);
-                System.out.println("  bound to exchange='" + b.exchange + "' key='" + b.routingKey + "'");
+            List<Binding> allBindings = new ArrayList<>(cfg.bindings);
+            for (String sourceQueue : cfg.cloneQueues) {
+                System.out.println("Fetching bindings of queue '" + sourceQueue + "' via Management API...");
+                List<Binding> cloned = fetchQueueBindings(cfg, sourceQueue);
+                System.out.println("  found " + cloned.size() + " bindings");
+                for (Binding b : cloned) {
+                    System.out.println("    " + b.exchange + " :: " + b.routingKey);
+                }
+                allBindings.addAll(cloned);
             }
+
+            if (allBindings.isEmpty()) {
+                throw new IllegalStateException(
+                    "No bindings to apply. Set PROBE_BINDINGS and/or PROBE_CLONE_QUEUES.");
+            }
+
+            for (Binding b : allBindings) {
+                channel.queueBind(queueName, b.exchange, b.routingKey);
+            }
+            System.out.println("Applied " + allBindings.size() + " binding(s) to temp queue.");
 
             AtomicInteger counter = new AtomicInteger();
             CountDownLatch done = new CountDownLatch(1);
@@ -226,6 +257,53 @@ public final class WireProbeMain {
         return sanitized.length() > 60 ? sanitized.substring(0, 60) : sanitized;
     }
 
+    /**
+     * Читает bindings очереди через RMQ Management HTTP API.
+     * Возвращает только {@code queue}-destination bindings и пропускает
+     * default exchange (source = "").
+     */
+    private static List<Binding> fetchQueueBindings(Config cfg, String queueName) throws Exception {
+        String encodedVhost = URLEncoder.encode(cfg.vhost, StandardCharsets.UTF_8);
+        String encodedQueue = URLEncoder.encode(queueName, StandardCharsets.UTF_8);
+        String url = String.format("%s://%s:%d/api/queues/%s/%s/bindings",
+            cfg.mgmtScheme, cfg.host, cfg.mgmtPort, encodedVhost, encodedQueue);
+
+        String basicAuth = Base64.getEncoder().encodeToString(
+            (cfg.username + ":" + cfg.password).getBytes(StandardCharsets.UTF_8));
+
+        HttpClient client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofSeconds(15))
+            .header("Authorization", "Basic " + basicAuth)
+            .header("Accept", "application/json")
+            .GET()
+            .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            throw new IOException("Mgmt API GET " + url + " returned HTTP "
+                + response.statusCode() + ": " + response.body());
+        }
+
+        JsonNode arr = MAPPER.readTree(response.body());
+        if (!arr.isArray()) {
+            throw new IOException("Mgmt API response is not an array: " + response.body());
+        }
+        List<Binding> result = new ArrayList<>();
+        for (JsonNode b : arr) {
+            String source = b.path("source").asText("");
+            String key = b.path("routing_key").asText("");
+            String destType = b.path("destination_type").asText("");
+            if (source.isEmpty()) continue;            // skip default exchange binding
+            if (!"queue".equals(destType)) continue;   // skip exchange-to-exchange
+            result.add(new Binding(source, key));
+        }
+        return result;
+    }
+
     private static final class Config {
         String host;
         int port;
@@ -233,6 +311,9 @@ public final class WireProbeMain {
         String username;
         String password;
         List<Binding> bindings;
+        List<String> cloneQueues;
+        String mgmtScheme;
+        int mgmtPort;
         String outputDir;
         int maxMessages;
 
@@ -243,38 +324,62 @@ public final class WireProbeMain {
             c.vhost = env("RMQ_VHOST", "/");
             c.username = require("RMQ_USER");
             c.password = require("RMQ_PASS");
+            c.mgmtScheme = env("RMQ_MGMT_SCHEME", "http");
+            c.mgmtPort = Integer.parseInt(env("RMQ_MGMT_PORT", "15672"));
             c.outputDir = env("PROBE_OUTPUT_DIR", "./probe-output");
             c.maxMessages = Integer.parseInt(env("PROBE_MAX_MESSAGES", "0"));
 
-            String bindingsRaw = require("PROBE_BINDINGS");
             c.bindings = new ArrayList<>();
-            for (String pair : bindingsRaw.split(",")) {
-                String trimmed = pair.trim();
-                if (trimmed.isEmpty()) continue;
-                int colon = trimmed.indexOf(':');
-                if (colon < 0) {
-                    throw new IllegalArgumentException(
-                        "Invalid PROBE_BINDINGS entry (expected 'exchange:routingKey'): " + trimmed);
+            String bindingsRaw = env("PROBE_BINDINGS", "");
+            if (!bindingsRaw.isEmpty()) {
+                for (String pair : bindingsRaw.split(",")) {
+                    String trimmed = pair.trim();
+                    if (trimmed.isEmpty()) continue;
+                    int colon = trimmed.indexOf(':');
+                    if (colon < 0) {
+                        throw new IllegalArgumentException(
+                            "Invalid PROBE_BINDINGS entry (expected 'exchange:routingKey'): " + trimmed);
+                    }
+                    String exchange = trimmed.substring(0, colon).trim();
+                    String routingKey = trimmed.substring(colon + 1).trim();
+                    c.bindings.add(new Binding(exchange, routingKey));
                 }
-                String exchange = trimmed.substring(0, colon).trim();
-                String routingKey = trimmed.substring(colon + 1).trim();
-                c.bindings.add(new Binding(exchange, routingKey));
             }
-            if (c.bindings.isEmpty()) {
-                throw new IllegalArgumentException("PROBE_BINDINGS is empty");
+
+            c.cloneQueues = new ArrayList<>();
+            String cloneRaw = env("PROBE_CLONE_QUEUES", "");
+            if (!cloneRaw.isEmpty()) {
+                for (String q : cloneRaw.split(",")) {
+                    String trimmed = q.trim();
+                    if (!trimmed.isEmpty()) c.cloneQueues.add(trimmed);
+                }
+            }
+
+            if (c.bindings.isEmpty() && c.cloneQueues.isEmpty()) {
+                throw new IllegalArgumentException(
+                    "Set at least one of PROBE_BINDINGS or PROBE_CLONE_QUEUES");
             }
             return c;
         }
 
         void print() {
             System.out.println("==== sal-wire-probe ====");
-            System.out.println("RMQ:    " + host + ":" + port + " vhost=" + vhost);
-            System.out.println("User:   " + username);
-            System.out.println("Output: " + outputDir);
-            System.out.println("Max:    " + (maxMessages > 0 ? maxMessages : "unlimited"));
-            System.out.println("Bindings:");
-            for (Binding b : bindings) {
-                System.out.println("  - " + b.exchange + " :: " + b.routingKey);
+            System.out.println("RMQ AMQP:  " + host + ":" + port + " vhost=" + vhost);
+            System.out.println("RMQ Mgmt:  " + mgmtScheme + "://" + host + ":" + mgmtPort);
+            System.out.println("User:      " + username);
+            System.out.println("Output:    " + outputDir);
+            System.out.println("Max msgs:  " + (maxMessages > 0 ? maxMessages : "unlimited"));
+            if (!bindings.isEmpty()) {
+                System.out.println("Explicit bindings:");
+                for (Binding b : bindings) {
+                    System.out.println("  - " + b.exchange + " :: " + b.routingKey);
+                }
+            }
+            if (!cloneQueues.isEmpty()) {
+                System.out.println("Clone queues:");
+                for (String q : cloneQueues) {
+                    System.out.println("  - " + q);
+                }
             }
             System.out.println("========================");
         }
