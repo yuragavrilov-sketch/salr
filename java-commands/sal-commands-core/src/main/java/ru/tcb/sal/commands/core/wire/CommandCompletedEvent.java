@@ -13,5 +13,5 @@ public class CommandCompletedEvent {
     public String resultType;
     /** Результат, на проводе — JObject; в Java читается как JsonNode и конвертируется позже. */
     public Object result;
-    public Map<String, Object> additionalData = new LinkedHashMap<>();
+    public Map<String, String> additionalData = new LinkedHashMap<>();
 }

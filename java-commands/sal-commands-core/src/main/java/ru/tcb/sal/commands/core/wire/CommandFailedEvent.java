@@ -10,5 +10,5 @@ import java.util.Map;
 public class CommandFailedEvent {
     public WireCommandContext context;
     public InfrastructureExceptionDto exceptionData;
-    public Map<String, Object> additionalData = new LinkedHashMap<>();
+    public Map<String, String> additionalData = new LinkedHashMap<>();
 }
