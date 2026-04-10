@@ -2,6 +2,7 @@ package ru.tcb.sal.commands.core.transport.amqp;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -57,6 +58,36 @@ public class RecordedMessageConverter {
             return mapper.readValue(bytes, RecordedMessage.class);
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to deserialize RecordedMessage", e);
+        }
+    }
+
+    /**
+     * Конвертирует {@code rm.payload} (обычно {@link JsonNode} после {@link #fromBytes})
+     * в конкретный тип {@code targetType}. Используется listener'ом,
+     * когда по {@code routingKey} резолвлен ожидаемый класс команды.
+     */
+    public <T> T readPayloadAs(RecordedMessage rm, Class<T> targetType) {
+        if (rm.payload == null) {
+            return null;
+        }
+        if (targetType.isInstance(rm.payload)) {
+            return targetType.cast(rm.payload);
+        }
+        if (rm.payload instanceof JsonNode node) {
+            try {
+                return mapper.treeToValue(node, targetType);
+            } catch (IOException e) {
+                throw new UncheckedIOException(
+                    "Failed to convert payload to " + targetType.getName(), e);
+            }
+        }
+        // Fallback: через JSON round-trip (для не-JsonNode объектов)
+        try {
+            byte[] bytes = mapper.writeValueAsBytes(rm.payload);
+            return mapper.readValue(bytes, targetType);
+        } catch (IOException e) {
+            throw new UncheckedIOException(
+                "Failed to convert payload to " + targetType.getName(), e);
         }
     }
 

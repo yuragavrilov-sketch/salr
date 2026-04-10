@@ -112,4 +112,32 @@ class RecordedMessageConverterTest {
         // .NET сериализует null поля как null (а не опускает)
         assertThat(json).contains("\"ExpireDate\":null");
     }
+
+    @Test
+    void readPayloadAs_resolvesByRoutingKey() {
+        PingCommand original = new PingCommand("hello", 42);
+        RecordedMessage rm = new RecordedMessage();
+        rm.correlationId = "cid-1";
+        rm.exchangeName = "CommandExchange";
+        rm.routingKey = "TCB.Test.PingCommand";
+        rm.priority = (byte) 5;
+        rm.timeStamp = Instant.parse("2026-04-10T12:00:00Z");
+        rm.payload = original;
+
+        byte[] bytes = converter.toBytes(rm);
+        RecordedMessage decoded = converter.fromBytes(bytes);
+
+        PingCommand resolved = converter.readPayloadAs(decoded, PingCommand.class);
+        assertThat(resolved.text).isEqualTo("hello");
+        assertThat(resolved.count).isEqualTo(42);
+    }
+
+    @Test
+    void readPayloadAs_nullPayload_returnsNull() {
+        RecordedMessage rm = new RecordedMessage();
+        rm.payload = null;
+
+        PingCommand resolved = converter.readPayloadAs(rm, PingCommand.class);
+        assertThat(resolved).isNull();
+    }
 }
