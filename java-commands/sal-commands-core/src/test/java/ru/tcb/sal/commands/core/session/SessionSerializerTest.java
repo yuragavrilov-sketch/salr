@@ -14,8 +14,8 @@ class SessionSerializerTest {
 
     @BeforeEach
     void setUp() {
-        mapper = new ObjectMapper();
-        serializer = new SessionSerializer(mapper);
+        serializer = new SessionSerializer();
+        mapper = serializer.mapper();
     }
 
     @Test

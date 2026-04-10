@@ -1,8 +1,12 @@
 package ru.tcb.sal.commands.core.session;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,9 +21,14 @@ import java.util.zip.InflaterInputStream;
  * Упаковывает/распаковывает сессию в .NET-совместимом формате:
  * JSON (PascalCase) → raw Deflate (без gzip wrapper) → Base64.
  *
- * <p>При ошибке распаковки возвращает пустой ObjectNode и логирует warn —
- * зеркало поведения .NET {@code SessionSerializer.Deserialize}, который
- * в случае corrupted session возвращал fake empty session.
+ * <p>Локальный {@link ObjectMapper} с теми же настройками, что
+ * у {@code RecordedMessageConverter} (PascalCase, JavaTime, ALWAYS-null) —
+ * это гарантирует, что любая сессия, попадающая в {@code AdditionalData["Session"]},
+ * читается .NET-стороной без рассинхрона.
+ *
+ * <p>При ошибке распаковки возвращает пустой {@link ObjectNode} и логирует
+ * warn — зеркало поведения .NET {@code SessionSerializer.Deserialize},
+ * который в случае corrupted session возвращал fake empty session.
  */
 public class SessionSerializer {
 
@@ -27,8 +36,12 @@ public class SessionSerializer {
 
     private final ObjectMapper mapper;
 
-    public SessionSerializer(ObjectMapper mapper) {
-        this.mapper = mapper;
+    public SessionSerializer() {
+        this.mapper = new ObjectMapper()
+            .setPropertyNamingStrategy(PropertyNamingStrategies.UPPER_CAMEL_CASE)
+            .registerModule(new JavaTimeModule())
+            .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
+            .setSerializationInclusion(JsonInclude.Include.ALWAYS);
     }
 
     public String serialize(ObjectNode session) {
@@ -63,5 +76,10 @@ public class SessionSerializer {
                 base64.length(), e.getMessage());
             return mapper.createObjectNode();
         }
+    }
+
+    /** Доступ к локальному mapper'у — для построения {@link ObjectNode}-сессий в тестах. */
+    public ObjectMapper mapper() {
+        return mapper;
     }
 }
