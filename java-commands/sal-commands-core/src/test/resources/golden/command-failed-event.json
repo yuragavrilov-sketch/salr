@@ -1,0 +1,43 @@
+{
+  "CorrelationId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "ExchangeName": "TCB.Infrastructure.Command.CommandFailedEvent",
+  "RoutingKey": "ru.tcb.test.AdapterA",
+  "SourceServiceId": "ru.tcb.test.AdapterB",
+  "MessageId": "3",
+  "Priority": 5,
+  "TimeStamp": "2026-04-10T12:00:02Z",
+  "ExpireDate": null,
+  "Payload": {
+    "Context": {
+      "CommandType": "TCB.Test.PingCommand",
+      "CorrelationId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "SourceServiceId": "ru.tcb.test.AdapterA",
+      "TimeStamp": "2026-04-10T12:00:01Z",
+      "ExpireDate": null,
+      "ExcutionServiceId": "ru.tcb.test.AdapterB",
+      "ExcutionTimeStamp": "2026-04-10T12:00:02Z",
+      "ExcutionDuration": "PT0.010S",
+      "Priority": 5,
+      "SessionId": "sess-42",
+      "OperationId": "12346"
+    },
+    "ExceptionData": {
+      "ExceptionType": "TCB.Payment.Business.PaymentDeclinedException",
+      "Code": "PAYMENT_DECLINED",
+      "CodeDescription": "Insufficient funds",
+      "Message": "Insufficient funds",
+      "AdapterName": "ru.tcb.test.AdapterB",
+      "SourceType": "TCB.Payment.Handlers.PaymentCommandHandler",
+      "SourcePath": "TCB.Payment.Handlers.PaymentCommandHandler.Execute",
+      "SessionId": "sess-42",
+      "SourceId": null,
+      "TimeStamp": "2026-04-10T12:00:02Z",
+      "Properties": null,
+      "InnerException": null
+    },
+    "AdditionalData": {}
+  },
+  "AdditionalData": {
+    "Session": "eJyrVkosLskvKlayUjA0NDKvBQAr2gSD"
+  }
+}

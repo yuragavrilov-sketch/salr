@@ -1,0 +1,34 @@
+{
+  "CorrelationId": "11111111-2222-3333-4444-555555555555",
+  "ExchangeName": "TCB.Infrastructure.Command.CommandCompletedEvent",
+  "RoutingKey": "ru.tcb.test.AdapterA",
+  "SourceServiceId": "ru.tcb.test.AdapterB",
+  "MessageId": "2",
+  "Priority": 5,
+  "TimeStamp": "2026-04-10T12:00:01Z",
+  "ExpireDate": null,
+  "Payload": {
+    "Context": {
+      "CommandType": "TCB.Test.PingCommand",
+      "CorrelationId": "11111111-2222-3333-4444-555555555555",
+      "SourceServiceId": "ru.tcb.test.AdapterA",
+      "TimeStamp": "2026-04-10T12:00:00Z",
+      "ExpireDate": "2026-04-10T12:02:00Z",
+      "ExcutionServiceId": "ru.tcb.test.AdapterB",
+      "ExcutionTimeStamp": "2026-04-10T12:00:01Z",
+      "ExcutionDuration": "PT0.050S",
+      "Priority": 5,
+      "SessionId": "sess-42",
+      "OperationId": "12345"
+    },
+    "ResultType": "TCB.Test.PingResult, TCB.Test.Contracts",
+    "Result": {
+      "Echo": "hello",
+      "Processed": true
+    },
+    "AdditionalData": {}
+  },
+  "AdditionalData": {
+    "Session": "eJyrVkosLskvKlayUjA0NDKvBQAr2gSD"
+  }
+}
