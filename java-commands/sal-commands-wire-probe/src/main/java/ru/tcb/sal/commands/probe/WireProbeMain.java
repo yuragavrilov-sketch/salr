@@ -59,7 +59,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       binding'и которых надо клонировать в нашу temp queue (опционально).
  *       Удобно для зеркалирования всего трафика существующего .NET-адаптера —
  *       тулз получит копии всех его команд и результатов всех типов сразу.</li>
- *   <li>Должно быть задано минимум одно из {@code PROBE_BINDINGS} / {@code PROBE_CLONE_QUEUES}.</li>
+ *   <li>{@code PROBE_CLONE_ALL} — если {@code true}, тулз обходит ВСЕ очереди
+ *       vhost'а через Management API, собирает их bindings (с дедупликацией)
+ *       и применяет к нашей temp queue. Это закрывает кейс «поймать вообще всё,
+ *       что течёт через шину» без необходимости знать имена очередей и
+ *       routing keys заранее. Системные очереди ({@code amq.*}) и другие
+ *       probe-очереди (с префиксом {@code sal-wire-probe-}) пропускаются.</li>
+ *   <li>Должно быть задано минимум одно из {@code PROBE_BINDINGS} /
+ *       {@code PROBE_CLONE_QUEUES} / {@code PROBE_CLONE_ALL}.</li>
  *   <li>{@code RMQ_MGMT_PORT} — порт RMQ Management HTTP API, по умолчанию 15672
  *       (нужен только при использовании {@code PROBE_CLONE_QUEUES})</li>
  *   <li>{@code RMQ_MGMT_SCHEME} — http или https, по умолчанию http</li>
@@ -108,26 +115,57 @@ public final class WireProbeMain {
             channel.queueDeclare(queueName, false, true, true, null);
             System.out.println("Declared temp queue: " + queueName);
 
-            List<Binding> allBindings = new ArrayList<>(cfg.bindings);
-            for (String sourceQueue : cfg.cloneQueues) {
-                System.out.println("Fetching bindings of queue '" + sourceQueue + "' via Management API...");
-                List<Binding> cloned = fetchQueueBindings(cfg, sourceQueue);
-                System.out.println("  found " + cloned.size() + " bindings");
-                for (Binding b : cloned) {
-                    System.out.println("    " + b.exchange + " :: " + b.routingKey);
+            // Aggregate explicit + cloned bindings, deduplicated
+            java.util.LinkedHashSet<Binding> allBindings = new java.util.LinkedHashSet<>(cfg.bindings);
+
+            List<String> queuesToClone = new ArrayList<>(cfg.cloneQueues);
+            if (cfg.cloneAll) {
+                System.out.println("Discovering all queues in vhost via Management API...");
+                List<String> discovered = listAllQueues(cfg);
+                int kept = 0;
+                for (String q : discovered) {
+                    if (q.startsWith("amq.")) continue;             // skip system queues
+                    if (q.startsWith("sal-wire-probe-")) continue;  // skip our own / sibling probes
+                    queuesToClone.add(q);
+                    kept++;
                 }
-                allBindings.addAll(cloned);
+                System.out.println("  found " + discovered.size() + " queues, "
+                    + kept + " eligible for cloning");
+            }
+
+            for (String sourceQueue : queuesToClone) {
+                List<Binding> cloned;
+                try {
+                    cloned = fetchQueueBindings(cfg, sourceQueue);
+                } catch (Exception ex) {
+                    System.err.println("Failed to fetch bindings for '" + sourceQueue + "': " + ex.getMessage());
+                    continue;
+                }
+                int newOnes = 0;
+                for (Binding b : cloned) {
+                    if (allBindings.add(b)) newOnes++;
+                }
+                System.out.println("  cloned from '" + sourceQueue + "': "
+                    + cloned.size() + " bindings (" + newOnes + " new)");
             }
 
             if (allBindings.isEmpty()) {
                 throw new IllegalStateException(
-                    "No bindings to apply. Set PROBE_BINDINGS and/or PROBE_CLONE_QUEUES.");
+                    "No bindings to apply. Set PROBE_BINDINGS / PROBE_CLONE_QUEUES / PROBE_CLONE_ALL.");
             }
 
+            System.out.println("Applying " + allBindings.size() + " unique binding(s) to temp queue...");
+            int applied = 0;
             for (Binding b : allBindings) {
-                channel.queueBind(queueName, b.exchange, b.routingKey);
+                try {
+                    channel.queueBind(queueName, b.exchange, b.routingKey);
+                    applied++;
+                } catch (Exception ex) {
+                    System.err.println("  binding failed: " + b.exchange + " :: " + b.routingKey
+                        + " — " + ex.getMessage());
+                }
             }
-            System.out.println("Applied " + allBindings.size() + " binding(s) to temp queue.");
+            System.out.println("  " + applied + " binding(s) applied.");
 
             AtomicInteger counter = new AtomicInteger();
             CountDownLatch done = new CountDownLatch(1);
@@ -258,6 +296,22 @@ public final class WireProbeMain {
     }
 
     /**
+     * Возвращает имена всех очередей в vhost через Management API.
+     */
+    private static List<String> listAllQueues(Config cfg) throws Exception {
+        String encodedVhost = URLEncoder.encode(cfg.vhost, StandardCharsets.UTF_8);
+        String url = String.format("%s://%s:%d/api/queues/%s",
+            cfg.mgmtScheme, cfg.host, cfg.mgmtPort, encodedVhost);
+        JsonNode arr = mgmtGetArray(cfg, url);
+        List<String> result = new ArrayList<>();
+        for (JsonNode q : arr) {
+            String name = q.path("name").asText("");
+            if (!name.isEmpty()) result.add(name);
+        }
+        return result;
+    }
+
+    /**
      * Читает bindings очереди через RMQ Management HTTP API.
      * Возвращает только {@code queue}-destination bindings и пропускает
      * default exchange (source = "").
@@ -268,30 +322,7 @@ public final class WireProbeMain {
         String url = String.format("%s://%s:%d/api/queues/%s/%s/bindings",
             cfg.mgmtScheme, cfg.host, cfg.mgmtPort, encodedVhost, encodedQueue);
 
-        String basicAuth = Base64.getEncoder().encodeToString(
-            (cfg.username + ":" + cfg.password).getBytes(StandardCharsets.UTF_8));
-
-        HttpClient client = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .timeout(Duration.ofSeconds(15))
-            .header("Authorization", "Basic " + basicAuth)
-            .header("Accept", "application/json")
-            .GET()
-            .build();
-
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200) {
-            throw new IOException("Mgmt API GET " + url + " returned HTTP "
-                + response.statusCode() + ": " + response.body());
-        }
-
-        JsonNode arr = MAPPER.readTree(response.body());
-        if (!arr.isArray()) {
-            throw new IOException("Mgmt API response is not an array: " + response.body());
-        }
+        JsonNode arr = mgmtGetArray(cfg, url);
         List<Binding> result = new ArrayList<>();
         for (JsonNode b : arr) {
             String source = b.path("source").asText("");
@@ -304,6 +335,33 @@ public final class WireProbeMain {
         return result;
     }
 
+    private static JsonNode mgmtGetArray(Config cfg, String url) throws Exception {
+        String basicAuth = Base64.getEncoder().encodeToString(
+            (cfg.username + ":" + cfg.password).getBytes(StandardCharsets.UTF_8));
+
+        HttpClient client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofSeconds(30))
+            .header("Authorization", "Basic " + basicAuth)
+            .header("Accept", "application/json")
+            .GET()
+            .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            throw new IOException("Mgmt API GET " + url + " returned HTTP "
+                + response.statusCode() + ": " + response.body());
+        }
+        JsonNode arr = MAPPER.readTree(response.body());
+        if (!arr.isArray()) {
+            throw new IOException("Mgmt API response is not an array: " + response.body());
+        }
+        return arr;
+    }
+
     private static final class Config {
         String host;
         int port;
@@ -312,6 +370,7 @@ public final class WireProbeMain {
         String password;
         List<Binding> bindings;
         List<String> cloneQueues;
+        boolean cloneAll;
         String mgmtScheme;
         int mgmtPort;
         String outputDir;
@@ -355,9 +414,11 @@ public final class WireProbeMain {
                 }
             }
 
-            if (c.bindings.isEmpty() && c.cloneQueues.isEmpty()) {
+            c.cloneAll = Boolean.parseBoolean(env("PROBE_CLONE_ALL", "false"));
+
+            if (c.bindings.isEmpty() && c.cloneQueues.isEmpty() && !c.cloneAll) {
                 throw new IllegalArgumentException(
-                    "Set at least one of PROBE_BINDINGS or PROBE_CLONE_QUEUES");
+                    "Set at least one of PROBE_BINDINGS / PROBE_CLONE_QUEUES / PROBE_CLONE_ALL");
             }
             return c;
         }
@@ -380,6 +441,9 @@ public final class WireProbeMain {
                 for (String q : cloneQueues) {
                     System.out.println("  - " + q);
                 }
+            }
+            if (cloneAll) {
+                System.out.println("Clone ALL queues in vhost: true");
             }
             System.out.println("========================");
         }
