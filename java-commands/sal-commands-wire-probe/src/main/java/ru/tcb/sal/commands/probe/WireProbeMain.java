@@ -49,7 +49,34 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Не часть publishable артефактов — dev-tool.
  *
- * <p>Конфигурация через переменные окружения:
+ * <p>Конфигурация через CLI-аргументы (приоритет) или переменные окружения (fallback).
+ * CLI-аргументы в формате {@code --key=value} или {@code --flag} (для булевых).
+ * Пример:
+ * <pre>
+ * mvn -pl sal-commands-wire-probe -am compile exec:java \
+ *   "-Dexec.args=--host=rmq --user=u --pass=p --clone-all --idle-timeout=30"
+ * </pre>
+ *
+ * <p>CLI-переменные и их env-эквиваленты:
+ * <ul>
+ *   <li>{@code --host}         = {@code RMQ_HOST}</li>
+ *   <li>{@code --port}         = {@code RMQ_PORT}         (default 5672)</li>
+ *   <li>{@code --vhost}        = {@code RMQ_VHOST}        (default /)</li>
+ *   <li>{@code --user}         = {@code RMQ_USER}</li>
+ *   <li>{@code --pass}         = {@code RMQ_PASS}</li>
+ *   <li>{@code --mgmt-scheme}  = {@code RMQ_MGMT_SCHEME}  (default http)</li>
+ *   <li>{@code --mgmt-port}    = {@code RMQ_MGMT_PORT}    (default 15672)</li>
+ *   <li>{@code --bindings}     = {@code PROBE_BINDINGS}   (exchange1:key1,exchange2:key2,...)</li>
+ *   <li>{@code --clone-queues} = {@code PROBE_CLONE_QUEUES} (queue1,queue2,...)</li>
+ *   <li>{@code --clone-all}    = {@code PROBE_CLONE_ALL} (boolean flag)</li>
+ *   <li>{@code --output-dir}   = {@code PROBE_OUTPUT_DIR} (default ./probe-output)</li>
+ *   <li>{@code --max-messages} = {@code PROBE_MAX_MESSAGES} (default 0 = unlimited)</li>
+ *   <li>{@code --per-key-limit}    = {@code PROBE_PER_KEY_LIMIT}    (default 3)</li>
+ *   <li>{@code --idle-timeout}     = {@code PROBE_IDLE_TIMEOUT_SECONDS} (default 30)</li>
+ *   <li>{@code --help} / {@code -h} — print usage and exit</li>
+ * </ul>
+ *
+ * <p>Legacy: конфигурация через переменные окружения:
  * <ul>
  *   <li>{@code RMQ_HOST} — обязательно</li>
  *   <li>{@code RMQ_PORT} — по умолчанию 5672</li>
@@ -102,7 +129,12 @@ public final class WireProbeMain {
     private static volatile boolean SUMMARY_PRINTED = false;
 
     public static void main(String[] args) throws Exception {
-        Config cfg = Config.fromEnv();
+        Map<String, String> cliArgs = parseArgs(args);
+        if (cliArgs.containsKey("help") || cliArgs.containsKey("h")) {
+            printUsage();
+            return;
+        }
+        Config cfg = Config.load(cliArgs);
         cfg.print();
 
         Path outDir = Paths.get(cfg.outputDir).toAbsolutePath();
@@ -366,6 +398,63 @@ public final class WireProbeMain {
         return first == '{' || first == '[' || first == '"';
     }
 
+    private static Map<String, String> parseArgs(String[] args) {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (String a : args) {
+            if (a == null || a.isEmpty()) continue;
+            if (!a.startsWith("--") && !a.equals("-h")) {
+                throw new IllegalArgumentException("Unexpected argument '" + a
+                    + "'. Use --key=value or --flag, or --help for usage.");
+            }
+            String body = a.equals("-h") ? "h" : a.substring(2);
+            int eq = body.indexOf('=');
+            if (eq >= 0) {
+                map.put(body.substring(0, eq).trim(), body.substring(eq + 1));
+            } else {
+                map.put(body.trim(), "true");
+            }
+        }
+        return map;
+    }
+
+    private static void printUsage() {
+        System.out.println("""
+            sal-wire-probe — RabbitMQ message capture for wire-format validation.
+
+            Usage:
+              mvn -pl sal-commands-wire-probe -am compile exec:java \\
+                "-Dexec.args=--host=<rmq> --user=<u> --pass=<p> [options]"
+
+            Connection:
+              --host=<host>          RMQ host (required)
+              --port=<n>             AMQP port (default 5672)
+              --vhost=<v>            virtual host (default /)
+              --user=<u>             username (required)
+              --pass=<p>             password (required)
+              --mgmt-scheme=<s>      Management API scheme, http or https (default http)
+              --mgmt-port=<n>        Management API port (default 15672)
+
+            What to capture — at least one must be set:
+              --bindings=<list>      comma-separated exchange:routingKey pairs
+                                     e.g. CommandExchange:TCB.Some.Cmd,OtherExchange:key
+              --clone-queues=<list>  comma-separated queue names whose bindings to mirror
+              --clone-all            mirror bindings of every queue in the vhost (flag)
+
+            Capture policy:
+              --output-dir=<path>    where to save JSON dumps (default ./probe-output)
+              --max-messages=<n>     overall cap on saved messages, 0 = unlimited (default 0)
+              --per-key-limit=<n>    max samples per (exchange, routingKey), 0 = unlimited (default 3)
+              --idle-timeout=<n>     exit after N seconds of silence following first msg, 0 = off (default 30)
+
+            Misc:
+              --help, -h             print this help and exit
+
+            All flags can also be set via environment variables
+            (uppercase with underscores: RMQ_HOST, PROBE_CLONE_ALL, etc.).
+            CLI arguments override environment variables.
+            """);
+    }
+
     private static String sanitize(String s) {
         if (s == null || s.isEmpty()) return "no-key";
         String sanitized = s.replaceAll("[^A-Za-z0-9._-]", "_");
@@ -455,22 +544,22 @@ public final class WireProbeMain {
         int perKeyLimit;
         int idleTimeoutSeconds;
 
-        static Config fromEnv() {
+        static Config load(Map<String, String> cli) {
             Config c = new Config();
-            c.host = require("RMQ_HOST");
-            c.port = Integer.parseInt(env("RMQ_PORT", "5672"));
-            c.vhost = env("RMQ_VHOST", "/");
-            c.username = require("RMQ_USER");
-            c.password = require("RMQ_PASS");
-            c.mgmtScheme = env("RMQ_MGMT_SCHEME", "http");
-            c.mgmtPort = Integer.parseInt(env("RMQ_MGMT_PORT", "15672"));
-            c.outputDir = env("PROBE_OUTPUT_DIR", "./probe-output");
-            c.maxMessages = Integer.parseInt(env("PROBE_MAX_MESSAGES", "0"));
-            c.perKeyLimit = Integer.parseInt(env("PROBE_PER_KEY_LIMIT", "3"));
-            c.idleTimeoutSeconds = Integer.parseInt(env("PROBE_IDLE_TIMEOUT_SECONDS", "30"));
+            c.host = require(cli, "host", "RMQ_HOST");
+            c.port = Integer.parseInt(get(cli, "port", "RMQ_PORT", "5672"));
+            c.vhost = get(cli, "vhost", "RMQ_VHOST", "/");
+            c.username = require(cli, "user", "RMQ_USER");
+            c.password = require(cli, "pass", "RMQ_PASS");
+            c.mgmtScheme = get(cli, "mgmt-scheme", "RMQ_MGMT_SCHEME", "http");
+            c.mgmtPort = Integer.parseInt(get(cli, "mgmt-port", "RMQ_MGMT_PORT", "15672"));
+            c.outputDir = get(cli, "output-dir", "PROBE_OUTPUT_DIR", "./probe-output");
+            c.maxMessages = Integer.parseInt(get(cli, "max-messages", "PROBE_MAX_MESSAGES", "0"));
+            c.perKeyLimit = Integer.parseInt(get(cli, "per-key-limit", "PROBE_PER_KEY_LIMIT", "3"));
+            c.idleTimeoutSeconds = Integer.parseInt(get(cli, "idle-timeout", "PROBE_IDLE_TIMEOUT_SECONDS", "30"));
 
             c.bindings = new ArrayList<>();
-            String bindingsRaw = env("PROBE_BINDINGS", "");
+            String bindingsRaw = get(cli, "bindings", "PROBE_BINDINGS", "");
             if (!bindingsRaw.isEmpty()) {
                 for (String pair : bindingsRaw.split(",")) {
                     String trimmed = pair.trim();
@@ -478,7 +567,7 @@ public final class WireProbeMain {
                     int colon = trimmed.indexOf(':');
                     if (colon < 0) {
                         throw new IllegalArgumentException(
-                            "Invalid PROBE_BINDINGS entry (expected 'exchange:routingKey'): " + trimmed);
+                            "Invalid bindings entry (expected 'exchange:routingKey'): " + trimmed);
                     }
                     String exchange = trimmed.substring(0, colon).trim();
                     String routingKey = trimmed.substring(colon + 1).trim();
@@ -487,7 +576,7 @@ public final class WireProbeMain {
             }
 
             c.cloneQueues = new ArrayList<>();
-            String cloneRaw = env("PROBE_CLONE_QUEUES", "");
+            String cloneRaw = get(cli, "clone-queues", "PROBE_CLONE_QUEUES", "");
             if (!cloneRaw.isEmpty()) {
                 for (String q : cloneRaw.split(",")) {
                     String trimmed = q.trim();
@@ -495,13 +584,29 @@ public final class WireProbeMain {
                 }
             }
 
-            c.cloneAll = Boolean.parseBoolean(env("PROBE_CLONE_ALL", "false"));
+            c.cloneAll = Boolean.parseBoolean(get(cli, "clone-all", "PROBE_CLONE_ALL", "false"));
 
             if (c.bindings.isEmpty() && c.cloneQueues.isEmpty() && !c.cloneAll) {
                 throw new IllegalArgumentException(
-                    "Set at least one of PROBE_BINDINGS / PROBE_CLONE_QUEUES / PROBE_CLONE_ALL");
+                    "Set at least one of --bindings / --clone-queues / --clone-all");
             }
             return c;
+        }
+
+        private static String get(Map<String, String> cli, String cliKey, String envKey, String def) {
+            String cliValue = cli.get(cliKey);
+            if (cliValue != null) return cliValue;
+            String envValue = System.getenv(envKey);
+            return (envValue != null && !envValue.isEmpty()) ? envValue : def;
+        }
+
+        private static String require(Map<String, String> cli, String cliKey, String envKey) {
+            String v = get(cli, cliKey, envKey, null);
+            if (v == null || v.isEmpty()) {
+                throw new IllegalStateException(
+                    "Required: --" + cliKey + " (or " + envKey + " env var)");
+            }
+            return v;
         }
 
         void print() {
@@ -531,18 +636,6 @@ public final class WireProbeMain {
             System.out.println("========================");
         }
 
-        private static String env(String key, String def) {
-            String v = System.getenv(key);
-            return (v != null && !v.isEmpty()) ? v : def;
-        }
-
-        private static String require(String key) {
-            String v = System.getenv(key);
-            if (v == null || v.isEmpty()) {
-                throw new IllegalStateException("Environment variable " + key + " is required");
-            }
-            return v;
-        }
     }
 
     private record Binding(String exchange, String routingKey) {}
