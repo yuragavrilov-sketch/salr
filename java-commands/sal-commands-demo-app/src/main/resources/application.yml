@@ -13,3 +13,6 @@ spring:
 
 demo:
   adapter-name: ${DEMO_ADAPTER_NAME:JavaDemoAdapter}
+  # Comma-separated list of command wire-names to handle (bind to CommandExchange)
+  # Example: TCB.JavaDemo.Commands.EchoCommand,TCB.Other.Commands.PingCommand
+  handle-commands: ${DEMO_HANDLE_COMMANDS:}

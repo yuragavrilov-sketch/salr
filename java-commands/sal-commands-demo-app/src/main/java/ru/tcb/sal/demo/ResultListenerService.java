@@ -27,10 +27,13 @@ public class ResultListenerService {
     ) {}
 
     private final RecordedMessageConverter converter;
+    private final IncomingCommandHandler commandHandler;
     private final ConcurrentHashMap<String, CapturedResult> results = new ConcurrentHashMap<>();
 
-    public ResultListenerService(RecordedMessageConverter converter) {
+    public ResultListenerService(RecordedMessageConverter converter,
+                                  IncomingCommandHandler commandHandler) {
         this.converter = converter;
+        this.commandHandler = commandHandler;
         log.info("[INIT] ResultListenerService created");
     }
 
@@ -47,6 +50,13 @@ public class ResultListenerService {
             exchange, routingKey, correlationId, messageId, bodyLen);
         log.debug("[RECV] contentType='{}'", contentType);
         log.debug("[RECV] AMQP headers: {}", message.getMessageProperties().getHeaders());
+
+        // Route: CommandExchange → incoming command, handle it
+        if ("CommandExchange".equals(exchange)) {
+            log.info("[RECV] INCOMING COMMAND from CommandExchange, delegating to handler");
+            commandHandler.handleCommand(message);
+            return;
+        }
 
         try {
             String bodyJson = new String(message.getBody(), StandardCharsets.UTF_8);
@@ -71,13 +81,12 @@ public class ResultListenerService {
                     exchange, routingKey);
             }
 
-            // Determine result type
             if (exchange != null && exchange.contains("CommandCompletedEvent")) {
                 log.info("[RECV] COMPLETED: correlationId={} contentType={}", correlationId, contentType);
             } else if (exchange != null && exchange.contains("CommandFailedEvent")) {
                 log.warn("[RECV] FAILED: correlationId={} contentType={}", correlationId, contentType);
             } else {
-                log.info("[RECV] UNKNOWN type: exchange={} correlationId={}", exchange, correlationId);
+                log.info("[RECV] OTHER: exchange={} correlationId={}", exchange, correlationId);
             }
 
         } catch (Exception e) {
