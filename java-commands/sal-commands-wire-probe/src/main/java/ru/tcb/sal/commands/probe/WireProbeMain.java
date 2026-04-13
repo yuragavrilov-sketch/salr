@@ -506,6 +506,7 @@ public final class WireProbeMain {
             (cfg.username + ":" + cfg.password).getBytes(StandardCharsets.UTF_8));
 
         HttpClient client = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)   // RMQ Mgmt (Cowboy) не дружит с HTTP/2 upgrade
             .connectTimeout(Duration.ofSeconds(10))
             .build();
         HttpRequest request = HttpRequest.newBuilder()
