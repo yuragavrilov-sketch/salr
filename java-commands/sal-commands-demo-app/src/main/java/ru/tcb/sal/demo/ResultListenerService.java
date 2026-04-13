@@ -37,7 +37,7 @@ public class ResultListenerService {
         log.info("[INIT] ResultListenerService created");
     }
 
-    @RabbitListener(queues = "#{demoResultQueue.name}")
+    @RabbitListener(queues = "#{salAdapterQueue.name}")
     public void onMessage(Message message) {
         String exchange = message.getMessageProperties().getReceivedExchange();
         String routingKey = message.getMessageProperties().getReceivedRoutingKey();

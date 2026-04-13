@@ -11,13 +11,13 @@ spring:
     username: ${RMQ_USER:guest}
     password: ${RMQ_PASS:guest}
 
+sal:
+  command-bus:
+    adapter-name: ${DEMO_ADAPTER_NAME:JavaDemoAdapter}
+    default-timeout: 120s
+    concurrency: "5"
+
 demo:
   adapter-name: ${DEMO_ADAPTER_NAME:JavaDemoAdapter}
-  # Comma-separated list of command wire-names to handle (bind to CommandExchange)
-  # Example: TCB.JavaDemo.Commands.EchoCommand,TCB.Other.Commands.PingCommand
   handle-commands: ${DEMO_HANDLE_COMMANDS:}
-  # Queue naming for command handlers.
-  # .NET SAL convention: one queue per command type named "Command_<FullName>"
-  # If true (default), creates a separate queue per handled command type.
-  # If false, uses single queue "cmd.<adapterName>" for everything.
   per-command-queues: ${DEMO_PER_COMMAND_QUEUES:true}

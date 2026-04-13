@@ -17,15 +17,11 @@
     <dependencies>
         <dependency>
             <groupId>ru.tcb.sal</groupId>
-            <artifactId>sal-commands-core</artifactId>
+            <artifactId>sal-commands-spring-boot-starter</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-amqp</artifactId>
         </dependency>
     </dependencies>
 
