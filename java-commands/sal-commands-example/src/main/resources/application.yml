@@ -1,0 +1,17 @@
+server:
+  port: ${PORT:8081}
+
+spring:
+  application:
+    name: sal-example
+  rabbitmq:
+    host: ${RMQ_HOST:localhost}
+    port: ${RMQ_PORT:5672}
+    virtual-host: ${RMQ_VHOST:/}
+    username: ${RMQ_USER:guest}
+    password: ${RMQ_PASS:guest}
+
+sal:
+  command-bus:
+    adapter-name: ${ADAPTER_NAME:JavaExampleAdapter}
+    default-timeout: 30s

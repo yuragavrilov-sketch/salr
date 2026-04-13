@@ -32,6 +32,7 @@
         <module>sal-commands-test</module>
         <module>sal-commands-wire-probe</module>
         <module>sal-commands-demo-app</module>
+        <module>sal-commands-example</module>
     </modules>
 
     <dependencyManagement>
