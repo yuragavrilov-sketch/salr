@@ -59,9 +59,11 @@
     </dependencyManagement>
 
     <repositories>
+        <!-- Override default 'central' so Maven never goes to https://repo.maven.apache.org directly.
+             All traffic goes through local Nexus (which proxies Central internally over its own trust). -->
         <repository>
-            <id>nexus</id>
-            <name>Local Nexus</name>
+            <id>central</id>
+            <name>Local Nexus (proxy of Maven Central)</name>
             <url>http://localhost:8081/repository/maven-public/</url>
             <releases><enabled>true</enabled></releases>
             <snapshots><enabled>true</enabled></snapshots>
@@ -70,8 +72,8 @@
 
     <pluginRepositories>
         <pluginRepository>
-            <id>nexus</id>
-            <name>Local Nexus</name>
+            <id>central</id>
+            <name>Local Nexus (proxy of Maven Central)</name>
             <url>http://localhost:8081/repository/maven-public/</url>
             <releases><enabled>true</enabled></releases>
             <snapshots><enabled>true</enabled></snapshots>
