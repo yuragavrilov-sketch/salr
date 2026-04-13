@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAL Command Bus — Demo</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+               background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+        h1 { color: #00d4ff; margin-bottom: 20px; font-size: 1.5em; }
+        .container { max-width: 1200px; margin: 0 auto; display: grid;
+                     grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 20px; }
+        h2 { color: #00d4ff; margin-bottom: 15px; font-size: 1.1em; }
+        label { display: block; color: #a0a0a0; margin: 10px 0 4px; font-size: 0.85em; }
+        input, textarea { width: 100%; padding: 8px 12px; background: #0f3460; border: 1px solid #1a4080;
+                          color: #e0e0e0; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+        textarea { min-height: 120px; resize: vertical; }
+        button { background: #00d4ff; color: #1a1a2e; border: none; padding: 10px 24px;
+                 border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 15px; font-size: 1em; }
+        button:hover { background: #00b8d4; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .result-box { background: #0f3460; border-radius: 4px; padding: 12px; margin-top: 10px;
+                      white-space: pre-wrap; word-break: break-all; font-size: 0.85em;
+                      max-height: 500px; overflow-y: auto; }
+        .status { padding: 4px 8px; border-radius: 3px; font-size: 0.8em; display: inline-block; margin: 5px 0; }
+        .status.sent { background: #1b5e20; }
+        .status.received { background: #0d47a1; }
+        .status.waiting { background: #e65100; }
+        .status.error { background: #b71c1c; }
+        .info { color: #666; font-size: 0.8em; margin-top: 10px; }
+        #adapter-name { color: #00d4ff; }
+    </style>
+</head>
+<body>
+    <h1>SAL Command Bus — Wire Format E2E Demo</h1>
+    <p class="info">Adapter: <span id="adapter-name">loading...</span></p>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Send Command</h2>
+
+            <label>Command Type (FullName)</label>
+            <input id="commandType" value="TCB.MercLibrary.Client.Commands.GetConfigurationCommand"
+                   placeholder="TCB.Namespace.CommandName">
+
+            <label>Assembly Qualified Name (for content_type)</label>
+            <input id="assemblyQualified"
+                   value="TCB.MercLibrary.Client.Commands.GetConfigurationCommand, TCB.MercLibrary.Client"
+                   placeholder="TCB.Namespace.CommandName, TCB.Assembly">
+
+            <label>Payload JSON</label>
+            <textarea id="payloadJson">{"MercID":"103337","GateId":"OCT","Is3DS":false,"Mps":"VISA"}</textarea>
+
+            <button id="sendBtn" onclick="sendCommand()">Send Command</button>
+
+            <div id="sendResult"></div>
+        </div>
+
+        <div class="panel">
+            <h2>Result</h2>
+            <div id="resultArea">
+                <p class="info">Send a command — result will appear here.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentCorrelationId = null;
+        let pollTimer = null;
+
+        fetch('/api/info').then(r => r.json()).then(d => {
+            document.getElementById('adapter-name').textContent = d.adapterName;
+        });
+
+        async function sendCommand() {
+            const btn = document.getElementById('sendBtn');
+            btn.disabled = true;
+
+            const body = {
+                commandType: document.getElementById('commandType').value,
+                assemblyQualified: document.getElementById('assemblyQualified').value,
+                payloadJson: document.getElementById('payloadJson').value
+            };
+
+            try {
+                const res = await fetch('/api/send', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+
+                document.getElementById('sendResult').innerHTML =
+                    `<span class="status ${data.status}">${data.status}</span>` +
+                    `<div class="result-box">${JSON.stringify(data, null, 2)}</div>`;
+
+                if (data.correlationId) {
+                    currentCorrelationId = data.correlationId;
+                    document.getElementById('resultArea').innerHTML =
+                        `<span class="status waiting">waiting for ${data.correlationId.substring(0,8)}...</span>`;
+                    startPolling(data.correlationId);
+                }
+            } catch (e) {
+                document.getElementById('sendResult').innerHTML =
+                    `<span class="status error">error</span><div class="result-box">${e.message}</div>`;
+            }
+            btn.disabled = false;
+        }
+
+        function startPolling(cid) {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch(`/api/result/${cid}`);
+                    const data = await res.json();
+                    if (data.status === 'received') {
+                        clearInterval(pollTimer);
+                        pollTimer = null;
+
+                        let bodyFormatted = data.body;
+                        try { bodyFormatted = JSON.stringify(JSON.parse(data.body), null, 2); } catch(e) {}
+
+                        document.getElementById('resultArea').innerHTML =
+                            `<span class="status received">${data.exchange}</span>` +
+                            `<div class="info">${data.contentType} | ${data.receivedAt}</div>` +
+                            `<div class="result-box">${bodyFormatted}</div>`;
+                    }
+                } catch(e) {}
+            }, 500);
+
+            // Stop polling after 2 minutes
+            setTimeout(() => {
+                if (pollTimer) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                    if (document.getElementById('resultArea').innerHTML.includes('waiting')) {
+                        document.getElementById('resultArea').innerHTML +=
+                            `<div class="info" style="color:#e65100">Timeout — no response received in 2 minutes.</div>`;
+                    }
+                }
+            }, 120000);
+        }
+    </script>
+</body>
+</html>

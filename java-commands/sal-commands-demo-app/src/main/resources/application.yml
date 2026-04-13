@@ -1,0 +1,15 @@
+server:
+  port: ${DEMO_PORT:8080}
+
+spring:
+  application:
+    name: sal-demo
+  rabbitmq:
+    host: ${RMQ_HOST:localhost}
+    port: ${RMQ_PORT:5672}
+    virtual-host: ${RMQ_VHOST:/}
+    username: ${RMQ_USER:guest}
+    password: ${RMQ_PASS:guest}
+
+demo:
+  adapter-name: ${DEMO_ADAPTER_NAME:JavaDemoAdapter}
