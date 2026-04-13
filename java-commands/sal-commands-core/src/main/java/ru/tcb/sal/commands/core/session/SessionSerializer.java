@@ -11,7 +11,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
+import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
 
 /**
@@ -53,7 +55,9 @@ public class SessionSerializer {
             byte[] utf8 = json.getBytes(StandardCharsets.UTF_8);
 
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            try (DeflaterOutputStream deflate = new DeflaterOutputStream(bos)) {
+            // nowrap=true → raw DEFLATE without zlib header/checksum, matching .NET DeflateStream
+            Deflater deflater = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+            try (DeflaterOutputStream deflate = new DeflaterOutputStream(bos, deflater)) {
                 // .NET BinaryWriter string format: 7-bit encoded length prefix + UTF-8 bytes
                 write7BitEncodedInt(deflate, utf8.length);
                 deflate.write(utf8);
@@ -74,7 +78,9 @@ public class SessionSerializer {
         }
         try {
             byte[] compressed = Base64.getDecoder().decode(base64);
-            try (InflaterInputStream inflate = new InflaterInputStream(new ByteArrayInputStream(compressed))) {
+            // nowrap=true → raw DEFLATE, matching .NET DeflateStream
+            Inflater inflater = new Inflater(true);
+            try (InflaterInputStream inflate = new InflaterInputStream(new ByteArrayInputStream(compressed), inflater)) {
                 // .NET BinaryReader string format: read 7-bit encoded length, then UTF-8 bytes
                 int length = read7BitEncodedInt(inflate);
                 byte[] utf8 = inflate.readNBytes(length);
