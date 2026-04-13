@@ -1,5 +1,7 @@
 package ru.tcb.sal.demo;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
@@ -12,6 +14,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class ResultListenerService {
+
+    private static final Logger log = LoggerFactory.getLogger(ResultListenerService.class);
 
     public record CapturedResult(
         String correlationId,
@@ -27,16 +31,27 @@ public class ResultListenerService {
 
     public ResultListenerService(RecordedMessageConverter converter) {
         this.converter = converter;
+        log.info("[INIT] ResultListenerService created");
     }
 
     @RabbitListener(queues = "#{demoResultQueue.name}")
     public void onMessage(Message message) {
+        String exchange = message.getMessageProperties().getReceivedExchange();
+        String routingKey = message.getMessageProperties().getReceivedRoutingKey();
+        String contentType = message.getMessageProperties().getContentType();
+        String correlationId = message.getMessageProperties().getCorrelationId();
+        String messageId = message.getMessageProperties().getMessageId();
+        int bodyLen = message.getBody() != null ? message.getBody().length : 0;
+
+        log.info("[RECV] Message arrived: exchange='{}' routingKey='{}' correlationId={} messageId={} bodySize={}",
+            exchange, routingKey, correlationId, messageId, bodyLen);
+        log.debug("[RECV] contentType='{}'", contentType);
+        log.debug("[RECV] AMQP headers: {}", message.getMessageProperties().getHeaders());
+
         try {
-            String exchange = message.getMessageProperties().getReceivedExchange();
-            String routingKey = message.getMessageProperties().getReceivedRoutingKey();
-            String contentType = message.getMessageProperties().getContentType();
-            String correlationId = message.getMessageProperties().getCorrelationId();
             String bodyJson = new String(message.getBody(), StandardCharsets.UTF_8);
+            log.debug("[RECV] Body (first 500 chars): {}",
+                bodyJson.length() > 500 ? bodyJson.substring(0, 500) + "..." : bodyJson);
 
             CapturedResult result = new CapturedResult(
                 correlationId,
@@ -49,13 +64,25 @@ public class ResultListenerService {
 
             if (correlationId != null) {
                 results.put(correlationId, result);
+                log.info("[RECV] Stored result for correlationId={}, total results in store: {}",
+                    correlationId, results.size());
+            } else {
+                log.warn("[RECV] Message has no correlationId, cannot store. exchange={} routingKey={}",
+                    exchange, routingKey);
             }
 
-            System.out.println("[RESULT] " + exchange + " :: " + correlationId
-                + " (" + message.getBody().length + " bytes)");
+            // Determine result type
+            if (exchange != null && exchange.contains("CommandCompletedEvent")) {
+                log.info("[RECV] COMPLETED: correlationId={} contentType={}", correlationId, contentType);
+            } else if (exchange != null && exchange.contains("CommandFailedEvent")) {
+                log.warn("[RECV] FAILED: correlationId={} contentType={}", correlationId, contentType);
+            } else {
+                log.info("[RECV] UNKNOWN type: exchange={} correlationId={}", exchange, correlationId);
+            }
+
         } catch (Exception e) {
-            System.err.println("[RESULT ERROR] " + e.getMessage());
-            e.printStackTrace();
+            log.error("[RECV] Error processing message: correlationId={} error={}",
+                correlationId, e.getMessage(), e);
         }
     }
 
