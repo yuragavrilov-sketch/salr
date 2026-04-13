@@ -2,7 +2,9 @@ package ru.tcb.sal.commands.core.listener;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.tcb.sal.commands.api.exception.RemoteCommandException;
 import ru.tcb.sal.commands.core.bus.CorrelationStore;
+import ru.tcb.sal.commands.core.exception.ExceptionMapper;
 
 import java.util.concurrent.CompletableFuture;
 import ru.tcb.sal.commands.core.transport.amqp.RecordedMessageConverter;
@@ -16,10 +18,13 @@ public class ResultListener {
 
     private final RecordedMessageConverter converter;
     private final CorrelationStore store;
+    private final ExceptionMapper exceptionMapper;
 
-    public ResultListener(RecordedMessageConverter converter, CorrelationStore store) {
+    public ResultListener(RecordedMessageConverter converter, CorrelationStore store,
+                          ExceptionMapper exceptionMapper) {
         this.converter = converter;
         this.store = store;
+        this.exceptionMapper = exceptionMapper;
     }
 
     @SuppressWarnings("unchecked")
@@ -53,11 +58,10 @@ public class ResultListener {
         } else if (isFailed) {
             try {
                 CommandFailedEvent event = converter.readAsFailed(rm);
-                String msg = event.exceptionData != null ? event.exceptionData.message : "Unknown error";
-                String code = event.exceptionData != null ? event.exceptionData.code : null;
-                pending.future().completeExceptionally(
-                    new RuntimeException("[" + code + "] " + msg));
-                log.warn("[RESULT] Failed: correlationId={} code={}", rm.correlationId, code);
+                RemoteCommandException ex = exceptionMapper.map(event.exceptionData);
+                pending.future().completeExceptionally(ex);
+                log.warn("[RESULT] Failed: correlationId={} code={}", rm.correlationId,
+                    event.exceptionData != null ? event.exceptionData.code : null);
             } catch (Exception e) {
                 pending.future().completeExceptionally(e);
             }
