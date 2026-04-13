@@ -10,6 +10,7 @@ import ru.tcb.sal.commands.core.bus.CommandBusImpl;
 import ru.tcb.sal.commands.core.bus.CorrelationStore;
 import ru.tcb.sal.commands.core.handler.CommandHandlerRegistry;
 import ru.tcb.sal.commands.core.handler.HandlerBinding;
+import ru.tcb.sal.commands.core.exception.ExceptionMapper;
 import ru.tcb.sal.commands.core.listener.CommandListener;
 import ru.tcb.sal.commands.core.listener.ResponseBuilder;
 import ru.tcb.sal.commands.core.listener.ResultListener;
@@ -72,7 +73,7 @@ class InMemoryCommandTransportTest {
         ResponseBuilder responseBuilder = new ResponseBuilder(mapper, "TestAdapter");
         CommandListener commandListener = new CommandListener(
             handlerRegistry, converter, responseBuilder, transport);
-        ResultListener resultListener = new ResultListener(converter, store);
+        ResultListener resultListener = new ResultListener(converter, store, new ExceptionMapper());
 
         // Wire routing
         transport.registerConsumer("CommandExchange", commandListener::onMessage);

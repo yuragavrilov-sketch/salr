@@ -187,6 +187,33 @@ public class RecordedMessageConverter {
         return readPayloadAs(rm, CommandFailedEvent.class);
     }
 
+    /**
+     * Convert a Spring AMQP Message to AmqpWireMessage.
+     * Used by listener containers to bridge Spring AMQP into our wire model.
+     */
+    public AmqpWireMessage fromSpringMessage(org.springframework.amqp.core.Message message) {
+        var props = message.getMessageProperties();
+        java.util.Map<String, Object> headers = new java.util.LinkedHashMap<>();
+        if (props.getHeaders() != null) {
+            props.getHeaders().forEach((k, v) -> {
+                if (v != null) headers.put(k, v.toString());
+            });
+        }
+        return new AmqpWireMessage(
+            message.getBody(),
+            props.getReceivedExchange(),
+            props.getReceivedRoutingKey(),
+            props.getContentType(),
+            props.getCorrelationId(),
+            props.getMessageId(),
+            props.getPriority() != null ? props.getPriority() : 0,
+            props.getReceivedDeliveryMode() != null ? props.getReceivedDeliveryMode().ordinal() + 1 : 2,
+            props.getTimestamp(),
+            props.getExpiration(),
+            headers
+        );
+    }
+
     public ObjectMapper mapper() { return mapper; }
     public WireTypeRegistry registry() { return registry; }
 }
