@@ -18,6 +18,8 @@ import ru.tcb.sal.commands.core.session.SessionSerializer;
 import ru.tcb.sal.commands.core.transport.amqp.RecordedMessageConverter;
 import ru.tcb.sal.commands.core.wire.WireTypeRegistry;
 
+import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,6 +33,9 @@ public class RabbitConfig {
 
     @Value("${demo.handle-commands:}")
     private String handleCommands;
+
+    @Value("${demo.per-command-queues:true}")
+    private boolean perCommandQueues;
 
     @Bean
     public WireTypeRegistry wireTypeRegistry() {
@@ -87,12 +92,57 @@ public class RabbitConfig {
             for (String cmdType : handleCommands.split(",")) {
                 String trimmed = cmdType.trim();
                 if (trimmed.isEmpty()) continue;
-                declarations.add(BindingBuilder.bind(queue).to(commandExchange).with(trimmed));
-                log.info("[CONFIG] Command handler binding: queue='{}' -> CommandExchange with key='{}'",
-                    queue.getName(), trimmed);
+
+                if (perCommandQueues) {
+                    // .NET SAL convention: one queue per command type = "Command_<FullName>"
+                    String cmdQueueName = "Command_" + trimmed;
+                    Queue cmdQueue = QueueBuilder.durable(cmdQueueName).build();
+                    declarations.add(cmdQueue);
+                    declarations.add(BindingBuilder.bind(cmdQueue).to(commandExchange).with(trimmed));
+                    log.info("[CONFIG] Command handler: queue='{}' -> CommandExchange key='{}'",
+                        cmdQueueName, trimmed);
+                } else {
+                    // Single shared queue for all commands
+                    declarations.add(BindingBuilder.bind(queue).to(commandExchange).with(trimmed));
+                    log.info("[CONFIG] Command handler: queue='{}' -> CommandExchange key='{}'",
+                        queue.getName(), trimmed);
+                }
             }
         }
 
         return new Declarables(declarations);
+    }
+
+    @Bean
+    public SimpleMessageListenerContainer commandListenerContainer(
+            ConnectionFactory connectionFactory,
+            IncomingCommandHandler commandHandler) {
+        if (handleCommands == null || handleCommands.isBlank()) {
+            // No commands to handle — return empty container
+            SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(connectionFactory);
+            container.setAutoStartup(false);
+            return container;
+        }
+
+        List<String> queueNames = new ArrayList<>();
+        for (String cmdType : handleCommands.split(",")) {
+            String trimmed = cmdType.trim();
+            if (trimmed.isEmpty()) continue;
+            if (perCommandQueues) {
+                queueNames.add("Command_" + trimmed);
+            } else {
+                queueNames.add("cmd." + adapterName);
+                break; // single queue
+            }
+        }
+
+        log.info("[CONFIG] Creating command listener for queues: {}", queueNames);
+
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(connectionFactory);
+        container.setQueueNames(queueNames.toArray(new String[0]));
+        container.setMessageListener(commandHandler::handleCommand);
+        container.setConcurrentConsumers(1);
+        container.setAutoStartup(true);
+        return container;
     }
 }
