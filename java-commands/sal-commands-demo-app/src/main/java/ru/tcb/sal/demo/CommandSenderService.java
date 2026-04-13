@@ -70,17 +70,16 @@ public class CommandSenderService {
         }
 
         rm.additionalData = new LinkedHashMap<>();
-        ObjectNode sessionNode = sessionSerializer.mapper().createObjectNode();
-        sessionNode.put("SessionId", "demo-" + correlationId.substring(0, 8));
-        sessionNode.put("OperationId", msgId);
-        String sessionBase64 = sessionSerializer.serialize(sessionNode);
-        rm.additionalData.put("Session", sessionBase64);
+        // NOTE: Session intentionally NOT sent — .NET SessionSerializer uses
+        // BinaryWriter format (not JSON), and our Java SessionSerializer produces
+        // incompatible output. Without Session key, .NET skips deserialization
+        // and handler works without session context. Proper BinaryWriter-compatible
+        // SessionSerializer is a TODO for the starter.
         rm.additionalData.put("IsCommand", "");
         rm.additionalData.put("SourceServiceId", adapterName);
 
         log.debug("[SEND] AdditionalData keys: {}", rm.additionalData.keySet());
-        log.debug("[SEND] Session (first 50 chars): {}...",
-            sessionBase64.length() > 50 ? sessionBase64.substring(0, 50) : sessionBase64);
+        log.info("[SEND] Session NOT included (BinaryWriter format TODO)");
 
         RecordedMessageConverter.AmqpWireMessage wire = converter.toAmqp(rm);
 
