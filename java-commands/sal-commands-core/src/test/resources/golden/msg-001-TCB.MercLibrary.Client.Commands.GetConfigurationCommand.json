@@ -1,0 +1,28 @@
+{
+  "capturedAt" : "2026-04-13T08:48:02.192024500Z",
+  "envelope" : {
+    "exchange" : "CommandExchange",
+    "routingKey" : "TCB.MercLibrary.Client.Commands.GetConfigurationCommand",
+    "redelivered" : false,
+    "deliveryTag" : 1
+  },
+  "properties" : {
+    "contentType" : "TCB.MercLibrary.Client.Commands.GetConfigurationCommand, TCB.MercLibrary.Client",
+    "deliveryMode" : 2,
+    "priority" : 5,
+    "correlationId" : "060afc81-1b8e-478a-bdfe-d5e949d395c0",
+    "messageId" : "171478030",
+    "timestamp" : "2026-04-13T11:47:54Z",
+    "timestampEpochSeconds" : 1776080874,
+    "headers" : {
+      "Additional-Data" : "{\"Session\":\"bZTbsqpGEIYfIG/BvmQpDAyndYeKgqggKoqpXAwwHJTzUUilKo8edO9U5SJzNfX3V/13d03P37/9SaziukjQcEApJr6JAg2oiIkvIsWVF/vEN6BZlhW+iHqoG5xOhCk7U/g2szBKZpo5KYCeMxDOOXEOJOYTW+dVjyof++/bRPDMnGXnLD9x3ASccBWjJB5xdR6Kt+tyMk+WqMZT8FLjaoW72MPaZE/IpvZL1Ir/8bJwmjdYK2Tfr3Bd/yQkaQ4Ycc7Sb684CxNs4bLFdXOakDjPiO+mavEX4eVZEPsoa4jv34kzK9Hsz261FfHHF2EUuELNByeoaShUByjkeXmbNRR+NbjKUEJ5Ffbj5tPTJ/WnZoblaQBo+geAIvzBsFNYbptI+4xzOowE+C9Cjaf8lRcNb/1t/h/LDyoAKIg0S0/6NMvqgwFGmKr8IpRX87HyXCmQIHRnDIf4GfR8ZoY8gGYuL/GA5ZGLufeYWIgB5t1ghn3MzSDPejOJ8fDMFVgPBhxgXISmbJG93rr8vl/vhMOKTs1mv3GeCltquH9GOz3R3PReOM/FkdHC0Bn5hvTEYpODzDvkW6VjRKq+BiJJBV3vnTa2tWVoKT2QZqTLsVQ1530RmoHy9JgydKtoj1R7bdn03rL8pFcuduLx5FNd+mvzbuVKa3Tna1ZFCyenektahhBjJtGfr9Ful8O+XQSZcQ4X5sFnu50eXbCWSJr+4HSTbfhEJ/tgMP2VujXXpaVAaSFrMAj1xxYKrHGFZFoLi5tXpq1+gkJWyratL8WOMxAyU6ErupBtS1dcUYzcr29RZML7cUEtBtkdBy63qBeOclmEEjhz/gXYfrpxZDUIXbjohd5cUUU7kFlk8vflOYisYl/AvRpSgVrtRoG7PcHLw+EL2jxDbQrJPo5qV/a701pjrJ2yBao1xkrVuLtyoxztk6u57uhuT1dSKuHw0Fy5NX0zGcYNt4iY1f4mcuG1dq7kq7AErX5Y8AESew8NUKdYMbbUZhvaVpItH/XZF5yKvQq7OFA3ba3oTuzA1GmGYtlaFW3HBzrpnAvX3cO7LbTMcZPTqZ7fS7i5Jfax0KU+7o9GSz9355cV4/GsOVihu4J/sjowAakJxtMRb3K2HRwru6wjQ2Hw4rIUL3o2Nq5/w2BV2RGPF9s817NI14VluirXKuCbVZSJ5HElaAikpCNoldGfRoahD8mx21dwc1GDsSZ5OR+4pkiubbZLmLg6K+zWR+fuZJxW6WFH16xrItgPDzs2yOltrhTcmq/6fn26TulHy+Aw5Jq6rW7VFtW+hoqTumtx6LQH77C7kdzmdsUHLeIWKbbByzk0w3ivTVkaDN0VnkJRFqXYnx+5E+ZPjV1c0QurEHemuJk27VyhrEbev0vM8DzgwbTC1/XerHLv/Uu85V8/xF//AA==\",\"IsCommand\":\"\",\"SourceServiceId\":\"WorkFlowMashineMain\"}",
+      "Accept-Language" : "ru-RU"
+    }
+  },
+  "body" : {
+    "length" : 19,
+    "base64" : "eyJNZXJjSUQiOiIxMDMzMzcifQ==",
+    "utf8" : "{\"MercID\":\"103337\"}",
+    "looksLikeJson" : true
+  }
+}

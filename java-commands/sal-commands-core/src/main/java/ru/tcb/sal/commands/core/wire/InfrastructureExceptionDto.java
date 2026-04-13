@@ -1,10 +1,8 @@
 package ru.tcb.sal.commands.core.wire;
 
-import java.time.Instant;
-
 /**
- * Зеркало .NET TCB.Infrastructure.Exceptions.InfrastructureExceptionDTO.
- * Рекурсивная структура: InnerException того же типа.
+ * Mirror of .NET TCB.Infrastructure.Exceptions.InfrastructureExceptionDTO.
+ * Recursive structure: innerException is the same type.
  */
 public class InfrastructureExceptionDto {
     public String exceptionType;
@@ -16,7 +14,7 @@ public class InfrastructureExceptionDto {
     public String sourcePath;
     public String sessionId;
     public String sourceId;
-    public Instant timeStamp;
+    public String timeStamp;
     public Object properties;
     public InfrastructureExceptionDto innerException;
 }

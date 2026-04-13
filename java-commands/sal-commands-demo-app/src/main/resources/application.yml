@@ -1,0 +1,23 @@
+server:
+  port: ${DEMO_PORT:8080}
+
+spring:
+  application:
+    name: sal-demo
+  rabbitmq:
+    host: ${RMQ_HOST:localhost}
+    port: ${RMQ_PORT:5672}
+    virtual-host: ${RMQ_VHOST:/}
+    username: ${RMQ_USER:guest}
+    password: ${RMQ_PASS:guest}
+
+demo:
+  adapter-name: ${DEMO_ADAPTER_NAME:JavaDemoAdapter}
+  # Comma-separated list of command wire-names to handle (bind to CommandExchange)
+  # Example: TCB.JavaDemo.Commands.EchoCommand,TCB.Other.Commands.PingCommand
+  handle-commands: ${DEMO_HANDLE_COMMANDS:}
+  # Queue naming for command handlers.
+  # .NET SAL convention: one queue per command type named "Command_<FullName>"
+  # If true (default), creates a separate queue per handled command type.
+  # If false, uses single queue "cmd.<adapterName>" for everything.
+  per-command-queues: ${DEMO_PER_COMMAND_QUEUES:true}

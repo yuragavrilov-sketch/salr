@@ -31,6 +31,7 @@
         <module>sal-commands-spring-boot-starter</module>
         <module>sal-commands-test</module>
         <module>sal-commands-wire-probe</module>
+        <module>sal-commands-demo-app</module>
     </modules>
 
     <dependencyManagement>

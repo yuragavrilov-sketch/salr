@@ -4,11 +4,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Зеркало .NET TCB.Infrastructure.Command.CommandFailedEvent.
- * Отправляется от получателя (B) обратно отправителю (A) при ошибке.
+ * Mirror of .NET TCB.Infrastructure.Command.CommandFailedEvent.
+ * Lives in the AMQP body for failure messages.
  */
 public class CommandFailedEvent {
-    public WireCommandContext context;
     public InfrastructureExceptionDto exceptionData;
     public Map<String, String> additionalData = new LinkedHashMap<>();
+    public WireCommandContext context;
 }
