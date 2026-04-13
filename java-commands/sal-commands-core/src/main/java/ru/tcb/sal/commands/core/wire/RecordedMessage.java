@@ -1,24 +1,15 @@
 package ru.tcb.sal.commands.core.wire;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.fasterxml.jackson.databind.deser.std.JsonNodeDeserializer;
-
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Зеркало .NET TCB.Infrastructure.Message.RecordedMessage — транспортный
- * конверт шины. Поля публичные и lowerCamelCase; Jackson сериализует
- * их в PascalCase через локальную политику naming в RecordedMessageConverter.
+ * Internal Java representation of a wire message. NOT directly JSON-serializable.
+ * The converter maps between this struct and (AMQP body, properties, headers).
  *
- * <p>Не record, потому что .NET-сторона ожидает mutable POJO-форму
- * и мы сами иногда заполняем поля поэтапно.
- *
- * <p>Поле {@code payload} объявлено как {@link Object}, но при десериализации
- * Jackson всегда читает его в {@link JsonNode} благодаря {@link JsonNodeDeserializer}.
- * Конкретный тип команды/результата резолвится позже (Task 13: readPayloadAs).
+ * <p>For commands: payload = the command object (or JsonNode from incoming).
+ * For results: payload = CommandCompletedEvent or CommandFailedEvent (or JsonNode).
  */
 public class RecordedMessage {
     public String correlationId;
@@ -26,12 +17,10 @@ public class RecordedMessage {
     public String routingKey;
     public String sourceServiceId;
     public String messageId;
-    public byte priority;
+    public int priority;
     public Instant timeStamp;
-    public Instant expireDate;
-
-    @JsonDeserialize(using = JsonNodeDeserializer.class)
     public Object payload;
-
+    public String contentType;
+    public String acceptLanguage = "ru-RU";
     public Map<String, String> additionalData = new LinkedHashMap<>();
 }

@@ -4,14 +4,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Зеркало .NET TCB.Infrastructure.Command.CommandCompletedEvent.
- * Отправляется от получателя (B) обратно отправителю (A) при успехе.
+ * Mirror of .NET TCB.Infrastructure.Command.CommandCompletedEvent.
+ * Lives in the AMQP body for result messages.
  */
 public class CommandCompletedEvent {
-    public WireCommandContext context;
-    /** .NET AssemblyQualifiedName: "{FullName}, {AssemblyName}". */
     public String resultType;
-    /** Результат, на проводе — JObject; в Java читается как JsonNode и конвертируется позже. */
     public Object result;
     public Map<String, String> additionalData = new LinkedHashMap<>();
+    public WireCommandContext context;
 }

@@ -1,29 +1,23 @@
 package ru.tcb.sal.commands.core.wire;
 
-import java.time.Duration;
-import java.time.Instant;
-
 /**
- * Зеркало .NET TCB.Infrastructure.Command.CommandContext.
+ * Mirror of .NET TCB.Infrastructure.Command.CommandContext.
+ * ALL fields are String to preserve exact .NET serialization format:
+ * Priority is enum name ("Normal"), Duration is .NET TimeSpan ("00:00:00.123"),
+ * timestamps have inconsistent timezone handling.
  *
- * <p><b>Опечатки {@code Excution*}</b> — часть .NET DTO. НЕ исправлять,
- * это публичный wire-контракт. Для пользователей есть чистый
- * {@code api/CommandContext} без опечаток, маппинг внутренний.
+ * Parsing to typed values happens in the mapping to api/CommandContext, not here.
  */
 public class WireCommandContext {
     public String commandType;
     public String correlationId;
     public String sourceServiceId;
-    public Instant timeStamp;
-    public Instant expireDate;
-
-    // === .NET typos below — do not rename ===
+    public String timeStamp;
+    public String expireDate;
+    public String priority;
     public String excutionServiceId;
-    public Instant excutionTimeStamp;
-    public Duration excutionDuration;
-    // =========================================
-
-    public byte priority;
+    public String excutionTimeStamp;
+    public String excutionDuration;
     public String sessionId;
     public String operationId;
 }

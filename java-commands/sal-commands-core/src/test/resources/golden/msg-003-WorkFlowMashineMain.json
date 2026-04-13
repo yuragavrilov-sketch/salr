@@ -1,0 +1,28 @@
+{
+  "capturedAt" : "2026-04-13T08:48:02.723186300Z",
+  "envelope" : {
+    "exchange" : "TCB.Infrastructure.Command.CommandFailedEvent",
+    "routingKey" : "WorkFlowMashineMain",
+    "redelivered" : false,
+    "deliveryTag" : 3
+  },
+  "properties" : {
+    "contentType" : "TCB.Infrastructure.Command.CommandFailedEvent, TCB.Infrastructure",
+    "deliveryMode" : 2,
+    "priority" : 5,
+    "correlationId" : "d57ff9b6-5372-4ec0-ae1a-2428a97152aa",
+    "messageId" : "3642",
+    "timestamp" : "2026-04-13T11:47:55Z",
+    "timestampEpochSeconds" : 1776080875,
+    "headers" : {
+      "Additional-Data" : "{\"Session\":\"bZTbsqpGEIYfIG/BvmQpDAyndYeKgqggKoqpXAwwHJTzUUilKo8edO9U5SJzNfX3V/13d03P37/9SaziukjQcEApJr6JAg2oiIkvIsWVF/vEN6BZlhW+iHqoG5xOhCk7U/g2szBKZpo5KYCeMxDOOXEOJOYTW+dVjyof++/bRPDMnGXnLD9x3ASccBWjJB5xdR6Kt+tyMk+WqMZT8FLjaoW72MPaZE/IpvZL1Ir/8bJwmjdYK2Tfr3Bd/yQkaQ4Ycc7Sb684CxNs4bLFdXOakDjPiO+mavEX4eVZEPsoa4jv34kzK9Hsz261FfHHF2EUuELNByeoaShUByjkeXmbNRR+NbjKUEJ5Ffbj5tPTJ/WnZoblaQBo+geAIvzBsFNYbptI+4xzOowE+C9Cjaf8lRcNb/1t/h/LDyoAKIg0S0/6NMvqgwFGmKr8IpRX87HyXCmQIHRnDIf4GfR8ZoY8gGYuL/GA5ZGLufeYWIgB5t1ghn3MzSDPejOJ8fDMFVgPBhxgXISmbJG93rr8vl/vhMOKTs1mv3GeCltquH9GOz3R3PReOM/FkdHC0Bn5hvTEYpODzDvkW6VjRKq+BiJJBV3vnTa2tWVoKT2QZqTLsVQ1530RmoHy9JgydKtoj1R7bdn03rL8pFcuduLx5FNd+mvzbuVKa3Tna1ZFCyenektahhBjJtGfr9Ful8O+XQSZcQ4X5sFnu50eXbCWSJr+4HSTbfhEJ/tgMP2VujXXpaVAaSFrMAj1xxYKrHGFZFoLi5tXpq1+gkJWyratL8WOMxAyU6ErupBtS1dcUYzcr29RZML7cUEtBtkdBy63qBeOclmEEjhz/gXYfrpxZDUIXbjohd5cUUU7kFlk8vflOYisYl/AvRpSgVrtRoG7PcHLw+EL2jxDbQrJPo5qV/a701pjrJ2yBao1xkrVuLtyoxztk6u57uhuT1dSKuHw0Fy5NX0zGcYNt4iY1f4mcuG1dq7kq7AErX5Y8AESew8NUKdYMbbUZhvaVpItH/XZF5yKvQq7OFA3ba3oTuzA1GmGYtlaFW3HBzrpnAvX3cO7LbTMcZPTqZ7fS7i5Jfax0KU+7o9GSz9355cV4/GsOVihu4J/sjowAakJxtMRb3K2HRwru6wjQ2Hw4rIUL3o2Nq5/w2BV2RGPF9s817NI14VluirXKuCbVZSJ5HElaAikpCNoldGfRoahD8mx21dwc1GDsSZ5OR+4pkiubbZLmLg6K+zWR+fuZJxW6WFH16xrItgPDzs2yOltrhTcmq/6fn26TulHy+Aw5Jq6rW7VFtW+hoqTumtx6LQH77C7kdzmdsUHLeIWKbbByzk0w3ivTVkaDN0VnkJRFqXYnx+5E+ZPjV1c0QurEHemuJk27VyhrEbev0vM8DzgwbTC1/XerHLv/Uu85V8/xF//AA==\",\"SourceServiceId\":\"TCB.MercLibrary\"}",
+      "Accept-Language" : "ru-RU"
+    }
+  },
+  "body" : {
+    "length" : 876,
+    "base64" : "eyJFeGNlcHRpb25EYXRhIjp7IkV4Y2VwdGlvblR5cGUiOiJGYXRhbCIsIkNvZGUiOiJGYXRhbEV4Y2VwdGlvbiIsIk1lc3NhZ2UiOiJTZXF1ZW5jZSBjb250YWlucyBubyBtYXRjaGluZyBlbGVtZW50IiwiQWRhcHRlck5hbWUiOiJUQ0IuTWVyY0xpYnJhcnkiLCJTb3VyY2VUeXBlIjoiQ29tbWFuZEhhbmRsZXIiLCJTb3VyY2VQYXRoIjoiVENCLk1lcmNMaWJyYXJ5LkNsaWVudC5Db21tYW5kcy5HZXRGZWVDb21tYW5kIiwiU2Vzc2lvbklkIjoiW1NJRDoyMzYwMTEwMCMxNDg0IzIzOjAwMTcxNDc4MDMwXSIsIlNvdXJjZUlkIjoiZDU3ZmY5YjYtNTM3Mi00ZWMwLWFlMWEtMjQyOGE5NzE1MmFhIiwiVGltZVN0YW1wIjoiMjAyNi0wNC0xM1QxMTo0Nzo1NS4wNDI4Nzk4KzAzOjAwIiwiUHJvcGVydGllcyI6eyJUeXBlIjoiU3lzdGVtLkludmFsaWRPcGVyYXRpb25FeGNlcHRpb24ifX0sIkFkZGl0aW9uYWxEYXRhIjp7fSwiQ29udGV4dCI6eyJDb21tYW5kVHlwZSI6IlRDQi5NZXJjTGlicmFyeS5DbGllbnQuQ29tbWFuZHMuR2V0RmVlQ29tbWFuZCIsIkNvcnJlbGF0aW9uSWQiOiJkNTdmZjliNi01MzcyLTRlYzAtYWUxYS0yNDI4YTk3MTUyYWEiLCJTb3VyY2VTZXJ2aWNlSWQiOiJXb3JrRmxvd01hc2hpbmVNYWluIiwiVGltZVN0YW1wIjoiMjAyNi0wNC0xM1QxMTo0Nzo1NCIsIlByaW9yaXR5IjoiTm9ybWFsIiwiRXhjdXRpb25TZXJ2aWNlSWQiOiJUQ0IuTWVyY0xpYnJhcnkiLCJFeGN1dGlvblRpbWVTdGFtcCI6IjIwMjYtMDQtMTNUMTE6NDc6NTQuNzg3NzEzNyswMzowMCIsIkV4Y3V0aW9uRHVyYXRpb24iOiIwMDowMDowMC4yNDMxOTY3IiwiU2Vzc2lvbklkIjoiMjM2MDExMDAjMTQ4NCMyMyIsIk9wZXJhdGlvbklkIjoiMTcxNDc4MDMwIn19",
+    "utf8" : "{\"ExceptionData\":{\"ExceptionType\":\"Fatal\",\"Code\":\"FatalException\",\"Message\":\"Sequence contains no matching element\",\"AdapterName\":\"TCB.MercLibrary\",\"SourceType\":\"CommandHandler\",\"SourcePath\":\"TCB.MercLibrary.Client.Commands.GetFeeCommand\",\"SessionId\":\"[SID:23601100#1484#23:00171478030]\",\"SourceId\":\"d57ff9b6-5372-4ec0-ae1a-2428a97152aa\",\"TimeStamp\":\"2026-04-13T11:47:55.0428798+03:00\",\"Properties\":{\"Type\":\"System.InvalidOperationException\"}},\"AdditionalData\":{},\"Context\":{\"CommandType\":\"TCB.MercLibrary.Client.Commands.GetFeeCommand\",\"CorrelationId\":\"d57ff9b6-5372-4ec0-ae1a-2428a97152aa\",\"SourceServiceId\":\"WorkFlowMashineMain\",\"TimeStamp\":\"2026-04-13T11:47:54\",\"Priority\":\"Normal\",\"ExcutionServiceId\":\"TCB.MercLibrary\",\"ExcutionTimeStamp\":\"2026-04-13T11:47:54.7877137+03:00\",\"ExcutionDuration\":\"00:00:00.2431967\",\"SessionId\":\"23601100#1484#23\",\"OperationId\":\"171478030\"}}",
+    "looksLikeJson" : true
+  }
+}

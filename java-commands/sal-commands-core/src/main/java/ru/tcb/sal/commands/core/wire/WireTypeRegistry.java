@@ -71,6 +71,10 @@ public class WireTypeRegistry {
         return wireNameToClass.get(wireName);
     }
 
+    public boolean isRegistered(Class<?> clazz) {
+        return classToWireName.containsKey(clazz);
+    }
+
     public int size() {
         return classToWireName.size();
     }
