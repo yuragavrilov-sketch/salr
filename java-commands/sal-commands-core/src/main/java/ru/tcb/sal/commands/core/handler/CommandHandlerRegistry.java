@@ -14,13 +14,14 @@ public class CommandHandlerRegistry {
     public void register(HandlerBinding binding) {
         HandlerBinding existing = bindings.putIfAbsent(binding.wireName(), binding);
         if (existing != null) {
+            String existingName = existing.bean() != null ? existing.bean().getClass().getName() : "null";
+            String newName = binding.bean() != null ? binding.bean().getClass().getName() : "null";
             throw new IllegalStateException(
                 "Duplicate @CommandHandler for '" + binding.wireName() + "': "
-                    + existing.bean().getClass().getName() + " and "
-                    + binding.bean().getClass().getName());
+                    + existingName + " and " + newName);
         }
-        log.info("[REGISTRY] Registered: '{}' -> {}",
-            binding.wireName(), binding.bean().getClass().getSimpleName());
+        String beanName = binding.bean() != null ? binding.bean().getClass().getSimpleName() : "<static>";
+        log.info("[REGISTRY] Registered: '{}' -> {}", binding.wireName(), beanName);
     }
 
     public HandlerBinding find(String wireName) { return bindings.get(wireName); }
