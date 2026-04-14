@@ -9,6 +9,7 @@ import org.springframework.core.annotation.AnnotationUtils;
 import ru.tcb.sal.commands.api.CommandContext;
 import ru.tcb.sal.commands.api.annotation.CommandHandler;
 import ru.tcb.sal.commands.api.annotation.WireName;
+import ru.tcb.sal.commands.core.wire.WireTypeRegistry;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -19,9 +20,11 @@ public class CommandHandlerBeanPostProcessor implements BeanPostProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(CommandHandlerBeanPostProcessor.class);
     private final CommandHandlerRegistry registry;
+    private final WireTypeRegistry wireRegistry;
 
-    public CommandHandlerBeanPostProcessor(CommandHandlerRegistry registry) {
+    public CommandHandlerBeanPostProcessor(CommandHandlerRegistry registry, WireTypeRegistry wireRegistry) {
         this.registry = registry;
+        this.wireRegistry = wireRegistry;
     }
 
     @Override
@@ -61,6 +64,18 @@ public class CommandHandlerBeanPostProcessor implements BeanPostProcessor {
         try {
             method.setAccessible(true);
             MethodHandle handle = MethodHandles.lookup().unreflect(method).bindTo(bean);
+
+            // Auto-register command/result types in WireTypeRegistry if not already there.
+            // This saves users from a separate @Bean WireTypeRegistry wiring step —
+            // the @WireName on command/result is enough.
+            if (commandClass.isAnnotationPresent(WireName.class)
+                    && !wireRegistry.isRegistered(commandClass)) {
+                wireRegistry.register(commandClass);
+            }
+            if (resultClass != null && resultClass.isAnnotationPresent(WireName.class)
+                    && !wireRegistry.isRegistered(resultClass)) {
+                wireRegistry.register(resultClass);
+            }
 
             registry.register(new HandlerBinding(
                 wireName, commandClass, resultClass, bean, handle,

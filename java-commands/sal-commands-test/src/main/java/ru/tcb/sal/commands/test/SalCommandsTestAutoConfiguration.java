@@ -61,8 +61,8 @@ public class SalCommandsTestAutoConfiguration {
 
     @Bean
     public static CommandHandlerBeanPostProcessor commandHandlerBeanPostProcessor(
-            CommandHandlerRegistry registry) {
-        return new CommandHandlerBeanPostProcessor(registry);
+            CommandHandlerRegistry registry, WireTypeRegistry wireRegistry) {
+        return new CommandHandlerBeanPostProcessor(registry, wireRegistry);
     }
 
     @Bean

@@ -3,6 +3,7 @@ package ru.tcb.sal.commands.spring;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.*;
+import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
@@ -102,8 +103,8 @@ public class SalCommandsAutoConfiguration {
 
     @Bean
     public static CommandHandlerBeanPostProcessor salCommandHandlerBeanPostProcessor(
-            CommandHandlerRegistry registry) {
-        return new CommandHandlerBeanPostProcessor(registry);
+            CommandHandlerRegistry registry, WireTypeRegistry wireRegistry) {
+        return new CommandHandlerBeanPostProcessor(registry, wireRegistry);
     }
 
     @Bean
@@ -173,5 +174,32 @@ public class SalCommandsAutoConfiguration {
         });
         container.setConcurrentConsumers(Integer.parseInt(props.concurrency()));
         return container;
+    }
+
+    /**
+     * Dispatch container for incoming commands. Queues and listener bindings are
+     * wired up post-factum by {@link SalCommandDispatchBootstrap} once all beans
+     * (and therefore all @CommandHandler registrations) are initialized.
+     */
+    @Bean
+    @ConditionalOnMissingBean(name = "salCommandDispatchContainer")
+    public SimpleMessageListenerContainer salCommandDispatchContainer(
+            ConnectionFactory connectionFactory,
+            SalCommandsProperties props) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(connectionFactory);
+        container.setAutoStartup(false);
+        container.setConcurrentConsumers(Integer.parseInt(props.concurrency()));
+        return container;
+    }
+
+    @Bean
+    public SalCommandDispatchBootstrap salCommandDispatchBootstrap(
+            SimpleMessageListenerContainer salCommandDispatchContainer,
+            CommandHandlerRegistry handlerRegistry,
+            CommandListener commandListener,
+            RecordedMessageConverter converter,
+            AmqpAdmin amqpAdmin) {
+        return new SalCommandDispatchBootstrap(
+            salCommandDispatchContainer, handlerRegistry, commandListener, converter, amqpAdmin);
     }
 }
