@@ -26,9 +26,7 @@
         <!-- Override managed versions to close remaining HIGH/CRITICAL CVEs
              not fully addressed by Spring Boot 3.4.5 BOM (trivy scan 2026-04-14). -->
         <tomcat.version>10.1.54</tomcat.version>
-        <!-- TODO: bump spring-framework.version to 6.2.11 once available in local Nexus
-             to close remaining HIGH CVE-2025-41249 (Annotation Detection, low impact
-             for AMQP-only services without Spring MVC request-mapping attack surface). -->
+        <spring-framework.version>6.2.11</spring-framework.version>
 
     </properties>
 
@@ -67,27 +65,33 @@
         </dependencies>
     </dependencyManagement>
 
-    <repositories>
-        <!-- Override default 'central' so Maven never goes to https://repo.maven.apache.org directly.
-             All traffic goes through local Nexus (which proxies Central internally over its own trust). -->
-        <repository>
-            <id>central</id>
-            <name>Local Nexus (proxy of Maven Central)</name>
-            <url>http://localhost:8081/repository/maven-public/</url>
-            <releases><enabled>true</enabled></releases>
-            <snapshots><enabled>true</enabled></snapshots>
-        </repository>
-    </repositories>
-
-    <pluginRepositories>
-        <pluginRepository>
-            <id>central</id>
-            <name>Local Nexus (proxy of Maven Central)</name>
-            <url>http://localhost:8081/repository/maven-public/</url>
-            <releases><enabled>true</enabled></releases>
-            <snapshots><enabled>true</enabled></snapshots>
-        </pluginRepository>
-    </pluginRepositories>
+    <!-- Repositories: by default Maven Central is used directly (для локальной сборки).
+         Для сборки внутри корпоративного контура — активировать профиль nexus:
+             mvn -Pnexus ...
+         или включить навсегда через ~/.m2/settings.xml (<activeProfiles>). -->
+    <profiles>
+        <profile>
+            <id>nexus</id>
+            <repositories>
+                <repository>
+                    <id>central</id>
+                    <name>Corporate Nexus (proxy of Maven Central)</name>
+                    <url>http://localhost:8081/repository/maven-public/</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                </repository>
+            </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>central</id>
+                    <name>Corporate Nexus (proxy of Maven Central)</name>
+                    <url>http://localhost:8081/repository/maven-public/</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
+    </profiles>
 
     <build>
         <plugins>
