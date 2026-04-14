@@ -153,6 +153,7 @@ public class SalCommandsAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "salResultListenerContainer")
     public SimpleMessageListenerContainer salResultListenerContainer(
             ConnectionFactory connectionFactory,
             ResultListener resultListener,
