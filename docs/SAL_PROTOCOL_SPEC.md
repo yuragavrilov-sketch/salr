@@ -49,6 +49,13 @@ response (publish в один из событийных exchange-ей). Корр
 
 Адаптер одновременно может быть и клиентом, и сервером (асимметрии нет).
 
+**Инвариант уникальности.** Имя адаптера (`adapterName`) ДОЛЖНО быть уникальным в
+пределах vhost. Два процесса с одним `adapterName` будут конкурентно читать из одной
+очереди `cmd.<adapterName>`, и ответы на команды первого адаптера случайным образом
+попадут ко второму (и будут отброшены из-за неизвестного `correlation_id`).
+Реализация MAY при старте проверять отсутствие активного consumer-а на своей очереди
+и fail-fast-ить при конфликте.
+
 ### 1.4. Жизненный цикл одной команды
 
 ```
@@ -116,30 +123,51 @@ queue.bind    Command_<FullName>  exchange=CommandExchange  routingKey=<FullName
 
 ### 2.2. AMQP свойства, общие для всех сообщений SAL
 
-| Свойство | Значение | Обязательность |
-|---|---|---|
-| `delivery_mode` | `2` (persistent) | обязательно |
-| `content_type` | AssemblyQualifiedName типа сообщения (см. §5.1) | обязательно |
-| `priority` | байт `0..10`, как правило `5` (Normal) | обязательно |
-| `correlation_id` | UUID-строка в нижнем регистре | обязательно |
-| `message_id` | строка с **числовым счётчиком отправителя** (НЕ UUID) | обязательно |
-| `timestamp` | epoch seconds (AMQP timestamp) | обязательно |
-| `headers` | см. §2.3 | обязательно |
+> Колонки «отправка» / «приём» разделены: отправитель ОБЯЗАН ставить, приёмник ОБЯЗАН
+> корректно обработать отсутствие (с fallback-ом).
 
-`reply_to`, `expiration`, `type`, `user_id`, `app_id` НЕ используются.
+| Свойство | Значение | Отправка | Приём (fallback) |
+|---|---|---|---|
+| `delivery_mode` | `2` (persistent) | MUST | MUST принимать любое |
+| `content_type` | AssemblyQualifiedName типа сообщения (см. §5.1) | MUST | MUST |
+| `priority` | байт `0..10`, как правило `5` | SHOULD | MUST (fallback `5`, если отсутствует/`0`) |
+| `correlation_id` | UUID-строка (канонически lower-case) | MUST | MUST (сравнение **case-insensitive**) |
+| `message_id` | строка с **числовым счётчиком отправителя** (НЕ UUID) | MUST | SHOULD |
+| `timestamp` | **Unix epoch SECONDS**, НЕ milliseconds (AMQP `timestamp` = int64) | MUST | SHOULD |
+| `headers` | см. §2.3 | MUST | MUST |
+
+Поля НЕ используются (не ставить, на приёме игнорировать): `reply_to`, `expiration`,
+`type`, `user_id`, `app_id`, `content_encoding`.
+
+**Про timestamp.** AMQP 0-9-1 `timestamp` = 64-битное целое, **секунды** с эпохи Unix.
+Частая ошибка — положить миллисекунды (Java `System.currentTimeMillis()` / JS `Date.now()`).
+Некоторые клиентские библиотеки сами делят на 1000; другие — нет. Проверить.
+
+**Про priority.** RMQ по умолчанию подставляет `0` для сообщений без priority. Новый
+приёмник не должен падать на `null`/`0` — трактовать как `Normal`=5.
 
 ### 2.3. AMQP заголовки
 
-Два заголовка, оба строковые:
+Два заголовка. Оба — AMQP `longstr` (UTF-8 байты с 32-битной длиной).
 
-| Header | Тип | Назначение |
+| Header | AMQP-тип | Назначение |
 |---|---|---|
-| `Accept-Language` | string | Локаль вызова, например `"ru-RU"` |
-| `Additional-Data` | string | **Вложенный JSON-объект, СЕРИАЛИЗОВАННЫЙ В СТРОКУ** |
+| `Accept-Language` | `longstr` (UTF-8) | Локаль вызова, например `"ru-RU"` |
+| `Additional-Data` | `longstr` (UTF-8) | **Вложенный JSON-объект, СЕРИАЛИЗОВАННЫЙ В СТРОКУ** |
 
 `Additional-Data` — это не AMQP table, не nested map, а именно строка с JSON. Её надо
 явно `JSON.stringify` при отправке и `JSON.parse` при чтении. Структура содержимого
 зависит от направления (см. §3.1.3 и §4.1.3).
+
+**Клиентские представления `longstr`.** Разные AMQP-библиотеки возвращают `longstr` по-разному:
+
+- Java/Spring AMQP — `com.rabbitmq.client.LongString` или `byte[]`, не всегда `String`;
+  нужно `new String(bytes, UTF_8)` или `LongString.toString()`.
+- Python `pika` — `bytes`, нужно `.decode('utf-8')`.
+- Go `amqp091-go` — `string` как есть.
+- Node `amqplib` — `Buffer`, нужно `.toString('utf8')`.
+
+Перед `JSON.parse` гарантированно привести к UTF-8 строке.
 
 ### 2.4. Приоритеты
 
@@ -190,14 +218,21 @@ Additional-Data: "{\"Session\":\"<base64>\",\"IsCommand\":\"\",\"SourceServiceId
 
 Содержимое распарсенного `Additional-Data` для команды:
 
-| Ключ | Тип | Назначение |
-|---|---|---|
-| `Session` | string (Base64) | сериализованная сессия (§7) |
-| `IsCommand` | string (всегда `""`) | дискриминатор: «это команда, не событие» |
-| `SourceServiceId` | string | имя адаптера-отправителя — становится routing_key для ответа |
-| `NoCreateQueue` | string `""` | (опционально) флаг «не создавать handler-очередь автоматом» |
+| Ключ | Тип | Назначение | Отправка | Приём |
+|---|---|---|---|---|
+| `Session` | string (Base64) | сериализованная сессия (§7) | MUST | MUST (если отсутствует — trait как пустая сессия) |
+| `IsCommand` | string (всегда `""`) | **информационный маркер** «это команда, не событие» | SHOULD | **SHOULD NOT использовать для маршрутизации** — handler уже знает по имени очереди `Command_*`, что пришла команда. Отсутствие не является ошибкой |
+| `SourceServiceId` | string | имя адаптера-отправителя — становится routing_key для ответа | MUST | MUST |
+| `NoCreateQueue` | string `""` | (опционально) флаг «не создавать handler-очередь автоматом» | optional | optional |
 
 Порядок ключей не значим. Значения всегда строковые (даже флаги — пустая строка).
+
+**Про `IsCommand`.** Исторически .NET использовал его, чтобы отличать команды от
+событий на одном транспорте. В текущем протоколе команда и событие ходят через разные
+обменники, и handler-адаптер получает команду из очереди `Command_*` по построению.
+Поэтому `IsCommand` считается информационным: отправитель SHOULD ставить (для обратной
+совместимости со старыми .NET-адаптерами), приёмник NOT MUST отбрасывать сообщение
+при его отсутствии.
 
 #### 3.1.4. Body
 
@@ -269,9 +304,11 @@ Accept-Language: "ru-RU"
 Additional-Data: "{\"Session\":\"<base64>\",\"SourceServiceId\":\"<handler-adapter-name>\"}"
 ```
 
-В ответе **нет** `IsCommand`. `SourceServiceId` теперь — имя handler-адаптера (того, кто
-отвечает). `Session` — обновлённая сессия (если handler её менял; иначе можно вернуть
-исходную).
+| Ключ | Отправка | Приём |
+|---|---|---|
+| `SourceServiceId` | MUST — имя handler-адаптера | MUST |
+| `Session` | OPTIONAL — если handler не менял/не имел сессии, ключ можно опустить | MUST (отсутствие = пустая сессия) |
+| `IsCommand` | MUST NOT — **в ответе не используется** | если пришёл, игнорировать |
 
 #### 4.1.4. Body
 
@@ -334,7 +371,7 @@ Envelope/Properties/Headers — идентичны §4.1 за исключени
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `ExceptionType` | string | категория: `"Fatal"`, `"Business"`, `"Technical"` или произвольная |
+| `ExceptionType` | string | **категория** (не FQN!): `"Fatal"`, `"Business"`, `"Technical"`. .NET-приёмник может switch-ить по значению — класть сюда язык-специфичный FQN класса НЕЛЬЗЯ, FQN идёт в `Properties.Type` |
 | `Code` | string | код ошибки. **Непустой** ⇒ бизнес-ошибка; **пустой/null** ⇒ техническая |
 | `Message` | string | человекочитаемое сообщение |
 | `AdapterName` | string | имя адаптера, где возникла ошибка |
@@ -343,8 +380,8 @@ Envelope/Properties/Headers — идентичны §4.1 за исключени
 | `SessionId` | string | ID сессии (формат произвольный, обычно `"[SID:...]"`) |
 | `SourceId` | string | UUID конкретного экземпляра ошибки |
 | `TimeStamp` | string | ISO-8601 с TZ-offset, точность до 100ns (.NET ticks) |
-| `Properties` | object<string,string> | свободный KV; обычно содержит `Type` = .NET тип исключения |
-| `InnerException` | object \| null | вложенное исключение той же структуры |
+| `Properties` | object<string,string> | свободный KV; обычно содержит `Type` = FQN исходного исключения (в т.ч. Java/Python FQN при межъязыковом обмене) |
+| `InnerException` | object \| **absent** | вложенное исключение той же структуры. При отсутствии inner — ключ **полностью опускается** (а не `null`), как в реальных .NET-дампах. Приёмник MUST корректно обработать и отсутствие ключа, и `null` |
 
 **Правило маппинга на стороне получателя:**
 - `Code` непустой → бизнес-исключение (доменная ошибка, должна быть обработана) ;
@@ -377,7 +414,7 @@ Envelope/Properties/Headers — идентичны §4.1 за исключени
 | `TimeStamp` | string | `yyyy-MM-ddTHH:mm:ss` **БЕЗ TZ, БЕЗ Z, БЕЗ долей секунды** | обязательно |
 | `Priority` | string | имя enum (`"Normal"`, `"High"`, ...) — не число! | обязательно |
 | `ExcutionServiceId` | string | имя handler-адаптера. **Опечатка `Excution` (без 'e') — часть протокола, менять нельзя** | обязательно |
-| `ExcutionTimeStamp` | string | `yyyy-MM-ddTHH:mm:ss.fffff+HH:mm` (с TZ-offset) | обязательно |
+| `ExcutionTimeStamp` | string | `yyyy-MM-ddTHH:mm:ss.f[ffffff]+HH:mm` — с TZ-offset, доли секунды **1..7 знаков** (.NET обрезает trailing zeros; в дампах встречаются `.50428` и `.7877137`). Парсер MUST принимать любую точность 0..7 | обязательно |
 | `ExcutionDuration` | string | формат **.NET TimeSpan** `HH:mm:ss.fffffff` (7 знаков долей — .NET ticks, 100 ns), а не ISO-8601 `PT...S` | обязательно |
 | `SessionId` | string | ID сессии (если есть в Session-данных) | строка, может быть `""` |
 | `OperationId` | string | ID операции (как правило, дублирует `message_id` исходной команды) | строка, может быть `""` |
@@ -603,9 +640,15 @@ Block length does not match with its complement.
 
 ### 7.5. Обработка ошибок при десериализации
 
-Если Base64/DEFLATE/UTF-8/JSON-парсинг сессии провалился — реализация должна вернуть
-**пустой объект** (не null, не исключение) и залогировать warning. Это поведение .NET-стороны:
-повреждённая сессия деградирует до «пустой fake-сессии», команда продолжает обрабатываться.
+| Случай | Поведение |
+|---|---|
+| `Additional-Data` отсутствует полностью | пустая сессия, сообщение обрабатывается |
+| В `Additional-Data` нет ключа `Session` | пустая сессия, сообщение обрабатывается |
+| `Session = ""` (пустая строка) | пустая сессия, сообщение обрабатывается |
+| Base64/DEFLATE/UTF-8/JSON-парсинг провалился | пустая сессия + warning в лог, сообщение **продолжает обрабатываться** |
+
+Это mirror-поведение .NET-стороны: повреждённая сессия деградирует до «пустой fake-сессии»,
+а не приводит к отказу от команды. Потеря команды из-за неправильной сессии недопустима.
 
 ### 7.6. Дельта-механика (опционально)
 
@@ -683,10 +726,22 @@ RMQ гарантирует at-least-once. Получатель обязан бы
 
 ### 9.1. Поведение при отсутствии handler-а
 
-Если в `Command_<FullName>`-очередь пришло сообщение, на которое нет зарегистрированного
-handler-а в этом адаптере, — реализация должна либо `nack` (с retry или в DLQ), либо
-ответить `CommandFailedEvent` с `ExceptionData.Code = "HandlerNotFound"`. Конкретику
-определяет адаптер, но **молча терять сообщение нельзя**.
+**Рекомендуемая политика (для совместимости между имплементациями):** отправить
+`CommandFailedEvent` с:
+
+- `ExceptionData.ExceptionType = "Technical"`
+- `ExceptionData.Code = "HandlerNotFound"`
+- `ExceptionData.Message = "No handler registered for <FullName>"`
+- `ExceptionData.AdapterName = <myAdapterName>`
+- `ExceptionData.SourceType = "CommandHandler"`
+- `ExceptionData.SourcePath = <FullName>`
+
+После публикации ответа — `ack` входящего сообщения.
+
+Альтернатива (`nack` в DLQ без ответа) допустима только когда caller имеет другой
+механизм отслеживания зависших команд — **молча терять сообщение нельзя**. Если у
+caller-а нет такого механизма, он увидит только тайм-аут, без диагностики причины.
+Поэтому рекомендованная политика — явный ответ.
 
 ### 9.2. Политика обработки ошибок (`@CommandHandler.onError`)
 
@@ -789,18 +844,23 @@ caller-а. Транзакции (`tx.select`) — не использовать,
 
 ## Приложение A. Полный реальный пример (round-trip)
 
+> В примерах ниже — snake_case-нотация (совпадает с §2.2 и именами на уровне AMQP-frame
+> `content-type`/`delivery-mode`/...). В дампах `PROBE/*.json` эти же поля — в camelCase,
+> потому что так их отдаёт Spring AMQP в Java. Это чисто клиентское представление,
+> на проводе поля одинаковые.
+
 ### A.1. Команда (caller → handler)
 
 ```
 exchange    : CommandExchange
-routingKey  : TCB.MercLibrary.Client.Commands.GetConfigurationCommand
+routing_key : TCB.MercLibrary.Client.Commands.GetConfigurationCommand
 properties:
-  contentType    : "TCB.MercLibrary.Client.Commands.GetConfigurationCommand, TCB.MercLibrary.Client"
-  deliveryMode   : 2
-  priority       : 5
-  correlationId  : "060afc81-1b8e-478a-bdfe-d5e949d395c0"
-  messageId      : "171478030"
-  timestamp      : 1776080874
+  content_type    : "TCB.MercLibrary.Client.Commands.GetConfigurationCommand, TCB.MercLibrary.Client"
+  delivery_mode   : 2
+  priority        : 5
+  correlation_id  : "060afc81-1b8e-478a-bdfe-d5e949d395c0"
+  message_id      : "171478030"
+  timestamp       : 1776080874
 headers:
   Accept-Language : "ru-RU"
   Additional-Data : "{\"Session\":\"bZTbsqpGEIYfIG/B...AA==\",\"IsCommand\":\"\",\"SourceServiceId\":\"WorkFlowMashineMain\"}"
@@ -812,14 +872,14 @@ body (UTF-8):
 
 ```
 exchange    : TCB.Infrastructure.Command.CommandCompletedEvent
-routingKey  : WorkFlowMashineMain
+routing_key : WorkFlowMashineMain
 properties:
-  contentType    : "TCB.Infrastructure.Command.CommandCompletedEvent, TCB.Infrastructure"
-  deliveryMode   : 2
-  priority       : 5
-  correlationId  : "060afc81-1b8e-478a-bdfe-d5e949d395c0"
-  messageId      : "3641"
-  timestamp      : 1776080874
+  content_type    : "TCB.Infrastructure.Command.CommandCompletedEvent, TCB.Infrastructure"
+  delivery_mode   : 2
+  priority        : 5
+  correlation_id  : "060afc81-1b8e-478a-bdfe-d5e949d395c0"
+  message_id      : "3641"
+  timestamp       : 1776080874
 headers:
   Accept-Language : "ru-RU"
   Additional-Data : "{\"Session\":\"bZTbsqpGEIYfIG/B...AA==\",\"SourceServiceId\":\"TCB.MercLibrary\"}"

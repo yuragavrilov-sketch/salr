@@ -46,7 +46,10 @@ public class ResponseBuilder {
     public RecordedMessage buildFailed(RecordedMessage incomingCmd, Throwable error,
                                         Duration executionDuration, String sessionBase64) {
         ObjectNode exData = mapper.createObjectNode();
-        exData.put("ExceptionType", error.getClass().getName());
+        // ExceptionType — категория в .NET-терминах ("Fatal"/"Business"/"Technical"),
+        // НЕ FQN Java-класса. FQN идёт в Properties.Type, чтобы .NET-приёмник,
+        // который может switch-ить по ExceptionType, не ломался на неизвестных значениях.
+        exData.put("ExceptionType", "Technical");
         exData.put("Code", "JavaHandlerException");
         exData.put("Message", error.getMessage());
         exData.put("AdapterName", adapterName);
@@ -54,9 +57,12 @@ public class ResponseBuilder {
         exData.put("SourcePath", incomingCmd.routingKey);
         exData.put("SessionId", "");
         exData.put("SourceId", incomingCmd.correlationId);
-        exData.put("TimeStamp", Instant.now().toString());
+        // TimeStamp в .NET-формате с TZ-offset (yyyy-MM-ddTHH:mm:ss.fffffff+HH:mm),
+        // не ISO-UTC "…Z" — иначе .NET DateTimeOffset.Parse сработает, но визуально
+        // расходится с production-дампами.
+        exData.put("TimeStamp", DOTNET_TS_OFFSET.format(Instant.now().atOffset(ZoneOffset.ofHours(3))));
         exData.set("Properties", mapper.createObjectNode().put("Type", error.getClass().getName()));
-        exData.putNull("InnerException");
+        // InnerException опускаем совсем (real-dump pattern), а не пишем null.
 
         ObjectNode eventBody = mapper.createObjectNode();
         eventBody.set("ExceptionData", exData);
