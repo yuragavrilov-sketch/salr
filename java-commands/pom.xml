@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.5</version>
+        <version>3.4.5</version>
         <relativePath/>
     </parent>
 
@@ -23,6 +23,13 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Override managed versions to close remaining HIGH/CRITICAL CVEs
+             not fully addressed by Spring Boot 3.4.5 BOM (trivy scan 2026-04-14). -->
+        <tomcat.version>10.1.54</tomcat.version>
+        <!-- TODO: bump spring-framework.version to 6.2.11 once available in local Nexus
+             to close remaining HIGH CVE-2025-41249 (Annotation Detection, low impact
+             for AMQP-only services without Spring MVC request-mapping attack surface). -->
+
     </properties>
 
     <modules>
