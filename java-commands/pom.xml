@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>ru.tcb.sal</groupId>
+    <groupId>ru.copperside.sal</groupId>
     <artifactId>sal-commands-parent</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
@@ -43,22 +43,22 @@
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>ru.tcb.sal</groupId>
+                <groupId>ru.copperside.sal</groupId>
                 <artifactId>sal-commands-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>ru.tcb.sal</groupId>
+                <groupId>ru.copperside.sal</groupId>
                 <artifactId>sal-commands-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>ru.tcb.sal</groupId>
+                <groupId>ru.copperside.sal</groupId>
                 <artifactId>sal-commands-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>ru.tcb.sal</groupId>
+                <groupId>ru.copperside.sal</groupId>
                 <artifactId>sal-commands-test</artifactId>
                 <version>${project.version}</version>
             </dependency>

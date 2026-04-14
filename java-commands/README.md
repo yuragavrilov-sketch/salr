@@ -23,7 +23,7 @@ Java-порт подсистемы Command Bus из .NET TCB.SAL.Common. Пол�
 
 ```xml
 <dependency>
-    <groupId>ru.tcb.sal</groupId>
+    <groupId>ru.copperside.sal</groupId>
     <artifactId>sal-commands-spring-boot-starter</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
