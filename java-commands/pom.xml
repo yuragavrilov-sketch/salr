@@ -72,11 +72,18 @@
     <profiles>
         <profile>
             <id>nexus</id>
+            <properties>
+                <!-- Переопределяются через -D или в ~/.m2/settings.xml / CI variables. -->
+                <nexus.base.url>http://localhost:8081</nexus.base.url>
+                <nexus.public.url>${nexus.base.url}/repository/maven-public/</nexus.public.url>
+                <nexus.releases.url>${nexus.base.url}/repository/maven-releases/</nexus.releases.url>
+                <nexus.snapshots.url>${nexus.base.url}/repository/maven-snapshots/</nexus.snapshots.url>
+            </properties>
             <repositories>
                 <repository>
                     <id>central</id>
                     <name>Corporate Nexus (proxy of Maven Central)</name>
-                    <url>http://localhost:8081/repository/maven-public/</url>
+                    <url>${nexus.public.url}</url>
                     <releases><enabled>true</enabled></releases>
                     <snapshots><enabled>true</enabled></snapshots>
                 </repository>
@@ -85,11 +92,23 @@
                 <pluginRepository>
                     <id>central</id>
                     <name>Corporate Nexus (proxy of Maven Central)</name>
-                    <url>http://localhost:8081/repository/maven-public/</url>
+                    <url>${nexus.public.url}</url>
                     <releases><enabled>true</enabled></releases>
                     <snapshots><enabled>true</enabled></snapshots>
                 </pluginRepository>
             </pluginRepositories>
+            <distributionManagement>
+                <repository>
+                    <id>nexus-releases</id>
+                    <name>Corporate Nexus — Releases</name>
+                    <url>${nexus.releases.url}</url>
+                </repository>
+                <snapshotRepository>
+                    <id>nexus-snapshots</id>
+                    <name>Corporate Nexus — Snapshots</name>
+                    <url>${nexus.snapshots.url}</url>
+                </snapshotRepository>
+            </distributionManagement>
         </profile>
     </profiles>
 
